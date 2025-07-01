@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+ this is a joke by a guy
+ inspired by another guy
+ check out the original:
+https://xkcd.com:443/806
+-->
+<head>
+  <meta charset="UTF-8">
+  <title>ssh -p 1337 localhost</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      background: #000;
+      color: #33ff33;
+      font-family: monospace;
+      padding: 1rem;
+      margin: 0;
+      white-space: pre;
+
+    }
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      background-color: #33ff33;
+      animation: blink 1s steps(2, start) infinite;
+      vertical-align:text-top;
+      height: 1em;
+    }
+    @keyframes blink {
+      to { visibility: hidden; }
+    }
+    .line {
+      margin: 0.2rem 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="terminal"></div>
+  <script>
+    const terminal = document.getElementById("terminal");
+    const cursor = document.createElement("span");
+    cursor.className = "cursor";
+    terminal.appendChild(cursor);
+
+    const lines = [
+      "",
+      "%> ","","","",
+      "%> ","","","","",
+      "%> shibboleet","","","","",
+      "%> ",
+      "%> ","","",
+      "%> shibboleet","","",
+      "%> ",
+      "%> shibboleet",
+      "","Connection established",
+      "",
+      "Spawning socket on /dev/xkcd/806",
+      "",
+      "Dialing... standby",
+      "","","",
+      "Socket initialized",
+      "",
+      "Authorizing.............  [?:0]",
+      "","","","---","","",
+      "Available Services:",
+      " - Network Engineering",
+      " - Traffic Engineering",
+      " - Wirless Engineering",
+      " - Complex Connectivity Consulting",
+      " - Complex *nix Systems Consulting",
+      " - Secured Industrial & Embedded Systems Guidance",
+      " - Network Filesystem & Storage Guidance",
+      " - Emrgntc Dispatc",
+      "%SYS-4-SOCKT: Socket override on xkcd:806 from operator",
+      "","",
+      "%SYS-2-SECUR: Barged connection: /dev/xkcd/806",
+      "",
+      "SysOp (operator@localhost) has joined channel #.shibboleet",
+      "","",
+      "SysOp: you don't seem familiar<a href='https://xkcd.com/806' style='color: #66dd33; text-decoration: none;'>... do I know you?</a>",
+      "","","","","",
+      "SysOp: please initiate contact using the details on the card",
+      "","",
+      "SysO%s%s%s_ ^d^d^a",
+      "%SYS-4-SOCKT: Socket reset on: -0",
+      "",
+      "%SYS-0-PANIC: Carrier dropped: -0: Device /dev/xkcd removed",
+      "",
+      "",
+      "",
+      "0x00  54 68 61 6e 6b 20 79 6f  75 20 66 6f 72 20 63 6f  |Thank you for co|",
+      "0x10  6e 74 61 63 74 69 6e 67  20 53 69 74 75 61 74 69  |ntacting Situati|",
+      "0x20  6f 6e 20 53 75 70 70 6f  72 74 0a 48 61 76 65 20  |on Support.Have |",
+      "0x30  79 6f 75 20 74 72 69 65  64 20 74 75 72 6e 69 6e  |you tried turnin|",
+      "0x40  67 20 69 74 20 6f 66 66  20 61 6e 64 20 6f 6e 3f  |g it off and on?|",
+      " ","",
+      "Connection to localhost closed",
+      " "
+    ];
+
+    function typeLine(text, lineFast = false, delay = 5) {
+      return new Promise(resolve => {
+        const line = document.createElement("div");
+        line.className = "line";
+        const contentSpan = document.createElement("span");
+        line.appendChild(contentSpan);
+        line.appendChild(cursor)
+        terminal.appendChild(line);
+       // terminal.appendChild(cursor);
+
+        if (lineFast) {
+          line.innerHTML = text;
+          setTimeout(resolve, 500);
+        } else {
+          let j = 0;
+          function typeChar() {
+            if (j < text.length) {
+              contentSpan.textContent += text[j++];
+              setTimeout(typeChar, delay + Math.random() * 150);
+            } else {
+              resolve();
+            }
+          }
+          typeChar();
+        }
+      });
+    }
+
+    async function printAll() {
+      terminal.appendChild(cursor);
+      await new Promise(r => setTimeout(r, 500));
+      for (let k = 0; k < lines.length; k++) {
+        if (lines[k] === "") await new Promise(r => setTimeout(r, 900));
+        const lineFast = lines[k].startsWith("SysOp") 
+        await typeLine(text = lines[k], lineFast);
+      }
+    }
+
+    window.onload = () => printAll();
+  </script>
+</body>
+</html>
+
