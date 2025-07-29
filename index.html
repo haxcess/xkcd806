@@ -45,9 +45,8 @@ https://xkcd.com:443/806
     terminal.appendChild(cursor);
 
     const lines = [
-      "",
       "%> ","","","",
-      "%> ","","","","",
+      "%> ","","","",
       "%> shibboleet","","","","",
       "%> ",
       "%> ","","",
@@ -65,14 +64,6 @@ https://xkcd.com:443/806
       "Authorizing.............  [?:0]",
       "","","","---","","",
       "Available Services:",
-      " - Network Engineering",
-      " - Traffic Engineering",
-      " - Wirless Engineering",
-      " - Complex Connectivity Consulting",
-      " - Complex *nix Systems Consulting",
-      " - Secured Industrial & Embedded Systems Guidance",
-      " - Network Filesystem & Storage Guidance",
-      " - Emrgntc Dispatc",
       "%SYS-4-SOCKT: Socket override on xkcd:806 from operator",
       "","",
       "%SYS-2-SECUR: Barged connection: /dev/xkcd/806",
@@ -87,9 +78,7 @@ https://xkcd.com:443/806
       "%SYS-4-SOCKT: Socket reset on: -0",
       "",
       "%SYS-0-PANIC: Carrier dropped: -0: Device /dev/xkcd removed",
-      "",
-      "",
-      "",
+      "","",""," ",
       "0x00  54 68 61 6e 6b 20 79 6f  75 20 66 6f 72 20 63 6f  |Thank you for co|",
       "0x10  6e 74 61 63 74 69 6e 67  20 53 69 74 75 61 74 69  |ntacting Situati|",
       "0x20  6f 6e 20 53 75 70 70 6f  72 74 0a 48 61 76 65 20  |on Support.Have |",
@@ -118,7 +107,7 @@ https://xkcd.com:443/806
           function typeChar() {
             if (j < text.length) {
               contentSpan.textContent += text[j++];
-              setTimeout(typeChar, delay + Math.random() * 150);
+              setTimeout(typeChar, delay + Math.random() * 75);
             } else {
               resolve();
             }
