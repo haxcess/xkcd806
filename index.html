@@ -24,6 +24,7 @@ https://xkcd.com:443/806
       display: inline-block;
       width: 8px;
       background-color: #33ff33;
+      color: #ddd533; // this exists because vscode gives me a color picker and render swatch, used below for ahref //
       animation: blink 1s steps(2, start) infinite;
       vertical-align:text-top;
       height: 1em;
@@ -46,7 +47,7 @@ https://xkcd.com:443/806
 
     const lines = [
       "%> ","","","",
-      "%> ","","","",
+      "%> ","","",
       "%> shibboleet","","","","",
       "%> ",
       "%> ","","",
@@ -63,22 +64,34 @@ https://xkcd.com:443/806
       "",
       "Authorizing.............  [?:0]",
       "","","","---","","",
-      "Available Services:",
+      "---- Available Services ----",
+      "Please make a menu selection:",
+      " ",
+      "|Network Operator:   |Linux Operator:",
+      "|- Routing           |- Container ",
+      "|- VPN and Tunnels   |- Virtualization ",
+      "|- Firewall          |- Storage ",
+      "|- DHCP, DNS, NTP    |- Core system ",
+      "|- Wireless          |- Embedded systems",
+      "|-         Emergency Dispatch          -|",
+      " ",
       "%SYS-4-SOCKT: Socket override on xkcd:806 from operator",
       "","",
       "%SYS-2-SECUR: Barged connection: /dev/xkcd/806",
       "",
       "SysOp (operator@localhost) has joined channel #.shibboleet",
       "","",
-      "SysOp: you don't seem familiar<a href='https://xkcd.com/806' style='color: #66dd33; text-decoration: none;'>... do I know you?</a>",
+      "SysOp: <a href='https://xkcd.com/806' style='color: #ddd533; text-decoration: none;'>you don't seem familiar... do I know you?</a>",
       "","","","","",
       "SysOp: please initiate contact using the details on the card",
-      "","",
+      ""," ",
       "SysO%s%s%s_ ^d^d^a",
       "%SYS-4-SOCKT: Socket reset on: -0",
       "",
       "%SYS-0-PANIC: Carrier dropped: -0: Device /dev/xkcd removed",
-      "","",""," ",
+      " ",
+      "",
+      "",
       "0x00  54 68 61 6e 6b 20 79 6f  75 20 66 6f 72 20 63 6f  |Thank you for co|",
       "0x10  6e 74 61 63 74 69 6e 67  20 53 69 74 75 61 74 69  |ntacting Situati|",
       "0x20  6f 6e 20 53 75 70 70 6f  72 74 0a 48 61 76 65 20  |on Support.Have |",
@@ -86,7 +99,8 @@ https://xkcd.com:443/806
       "0x40  67 20 69 74 20 6f 66 66  20 61 6e 64 20 6f 6e 3f  |g it off and on?|",
       " ","",
       "Connection to localhost closed",
-      " "
+      " ",
+      ""
     ];
 
     function typeLine(text, lineFast = false, delay = 5) {
@@ -131,4 +145,3 @@ https://xkcd.com:443/806
   </script>
 </body>
 </html>
-
