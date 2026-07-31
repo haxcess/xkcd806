@@ -683,8 +683,11 @@
     statEqt.textContent = (today.eqtime>=0?'+':'') + today.eqtime.toFixed(1) + ' min';
 
     // apparent solar time, recomputed from civil clock + equation of time
+    // civilMin is LOCAL (Calgary) clock time; the NOAA formula needs UTC
+    // minutes, same as solarPosition() uses internally -- convert first.
     const civilMin = civH*60+civM+civS/60;
-    const trueSolarMin = ((civilMin + today.eqtime + 4*LON) % 1440 + 1440) % 1440;
+    const utcMin = civilMin - today.offset*60;
+    const trueSolarMin = ((utcMin + today.eqtime + 4*LON) % 1440 + 1440) % 1440;
     statSolar.textContent = fmtHM(trueSolarMin);
 
     // sunrise/sunset + day length from today's declination.
