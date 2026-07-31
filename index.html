@@ -1,146 +1,253 @@
 <!DOCTYPE html>
 <html lang="en">
-<!--
- this is a joke by a guy
- inspired by another guy
- check out the original:
-https://xkcd.com:443/806
--->
 <head>
-  <meta charset="UTF-8">
-  <title>ssh -p 1337 localhost</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      background: #000;
-      color: #33ff33;
-      font-family: monospace;
-      padding: 1rem;
-      margin: 0;
-      white-space: pre;
-
-    }
-    .cursor {
-      display: inline-block;
-      width: 8px;
-      background-color: #33ff33;
-      animation: blink 1s steps(2, start) infinite;
-      vertical-align:text-top;
-      height: 1em;
-    }
-    @keyframes blink {
-      to { visibility: hidden; }
-    }
-    .line {
-      margin: 0.2rem 0;
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>shibboleet.ca</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect fill='%23000' width='16' height='16'/><text x='1' y='13' fill='%23FFB000' font-size='13' font-family='monospace'>$_</text></svg>">
+<style>
+:root{--r:255;--g:176;--b:0;--a:var(--r),var(--g),var(--b);--c:rgb(var(--a));--c8:rgba(var(--a),.8);--c5:rgba(var(--a),.5);--c3:rgba(var(--a),.3);--c2:rgba(var(--a),.2);--c1:rgba(var(--a),.1)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;color:var(--c);font:12px/1.6 'Courier New',Courier,monospace;overflow:hidden;height:100vh;width:100vw}
+canvas{position:fixed;inset:0;z-index:1}
+/* CRT vignette */
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 50% 38%,transparent 30%,rgba(0,0,0,.72) 100%);z-index:2;pointer-events:none}
+/* Scanlines */
+body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.45) 2px,rgba(0,0,0,.045) 4px);z-index:3;pointer-events:none}
+/* Layout */
+#ui{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;padding:1rem}
+/* Terminal window */
+.win{width:min(580px,96vw);border:1px solid var(--c3);box-shadow:0 0 60px rgba(var(--a),.08),0 0 0 1px rgba(var(--a),.04),inset 0 1px 0 rgba(var(--a),.06)}
+.bar{display:flex;justify-content:space-between;align-items:center;padding:.42rem .95rem;border-bottom:1px solid var(--c2);background:rgba(var(--a),.07);font-size:.64rem;color:var(--c5);letter-spacing:.06em;user-select:none}
+.dots{letter-spacing:.22em;font-size:.55rem;color:var(--c3)}
+.bd{padding:1.4rem 1.7rem 1.2rem;background:rgba(0,0,0,.9)}
+/* Content */
+h1{font-size:clamp(1.5rem,5.5vw,2.55rem);letter-spacing:.38em;text-shadow:0 0 14px var(--c),0 0 28px rgba(255,110,0,.5),0 0 55px rgba(255,80,0,.18);margin-bottom:.22rem;font-weight:normal;line-height:1}
+.sub{font-size:.6rem;letter-spacing:.42em;color:var(--c5);margin-bottom:1.25rem}
+.pr{font-size:.72rem;color:rgba(var(--a),.48);margin-bottom:.18rem;line-height:1.4}
+.pr::before{content:'root@shibboleet:~$ ';color:rgba(var(--a),.35)}
+.out{margin:.12rem 0 .85rem;font-size:.78rem;line-height:1.8}
+.tag{border:1px solid var(--c2);padding:.05rem .36rem;margin:.1rem .06rem;font-size:.62rem;display:inline-block;color:rgba(var(--a),.84);transition:border-color .2s,color .2s}
+.tag:hover{border-color:var(--c5);color:var(--c)}
+.dim{color:var(--c5)}
+a{color:rgba(var(--a),.9);text-decoration:none}
+a:hover{text-shadow:0 0 8px var(--c);color:var(--c)}
+.foot{margin-top:1.1rem;padding-top:.8rem;border-top:1px solid rgba(var(--a),.1);font-size:.56rem;color:rgba(var(--a),.26);letter-spacing:.09em;line-height:2}
+/* Blinking cursor */
+@keyframes blink{50%{opacity:0}}
+.cur{display:inline-block;animation:blink 1.08s step-end infinite}
+/* Responsive tightening */
+@media(max-width:480px){.bd{padding:1rem 1.1rem .9rem}.bar{padding:.35rem .7rem}}
+</style>
 </head>
 <body>
-  <div id="terminal"></div>
-  <script>
-    const terminal = document.getElementById("terminal");
-    const cursor = document.createElement("span");
-    cursor.className = "cursor";
-    terminal.appendChild(cursor);
+<canvas id="c"></canvas>
+<div id="ui">
+  <div class="win">
+    <div class="bar">
+      <span class="dots">■ ■ ■</span>
+      <span>shibboleet.ca &mdash; bash &mdash; 80&times;24</span>
+      <span id="up">00:00:00</span>
+    </div>
+    <div class="bd">
+      <h1>SHIBBOLEET.CA</h1>
+      <div class="sub">[ PACKETS &nbsp;·&nbsp; SIGNALS &nbsp;·&nbsp; SYSTEMS &nbsp;·&nbsp; SECURITY ]</div>
 
-    const lines = [
-      "%> ","","","",
-      "%> ","","",
-      "%> shibboleet","","","","",
-      "%> ",
-      "%> ","","",
-      "%> shibboleet","","",
-      "%> ",
-      "%> shibboleet",
-      "","Connection established",
-      "",
-      "Spawning socket on /dev/xkcd/806",
-      "",
-      "Dialing... standby",
-      "","","",
-      "Socket initialized",
-      "",
-      "Authorizing.............  [?:0]",
-      "","","","---","","",
-      "---- Available Services ----",
-      "Please make a menu selection:",
-      " ",
-      "|Network Operator:   |Linux Operator:",
-      "|- Routing           |- Container ",
-      "|- VPN and Tunnels   |- Virtualization ",
-      "|- Firewall          |- Storage ",
-      "|- DHCP, DNS, NTP    |- Core system ",
-      "|- Wireless          |- Embedded systems",
-      "|-         Emergency Dispatch          -|",
-      " ",
-      "%SYS-4-SOCKT: Socket override on xkcd:806 from operator",
-      "","",
-      "%SYS-2-SECUR: Barged connection: /dev/xkcd/806",
-      "",
-      "SysOp (operator@localhost) has joined channel #.shibboleet",
-      "","",
-      "SysOp: you don't seem familiar... <a href='https://xkcd.com/806' style='color: #ddd533; text-decoration: none;'>do I know you?</a>",
-      "","","","","",
-      "SysOp: please initiate contact using the details on the card",
-      ""," ",
-      "SysO%s%s%s_ ^d^d^a",
-      "%SYS-4-SOCKT: Socket reset on: -0",
-      "",
-      "%SYS-0-PANIC: Carrier dropped: -0: Device /dev/xkcd removed",
-      " ",
-      "",
-      "",
-      "0x00  54 68 61 6e 6b 20 79 6f  75 20 66 6f 72 20 63 6f  |Thank you for co|",
-      "0x10  6e 74 61 63 74 69 6e 67  20 53 69 74 75 61 74 69  |ntacting Situati|",
-      "0x20  6f 6e 20 53 75 70 70 6f  72 74 0a 48 61 76 65 20  |on Support.Have |",
-      "0x30  79 6f 75 20 74 72 69 65  64 20 74 75 72 6e 69 6e  |you tried turnin|",
-      "0x40  67 20 69 74 20 6f 66 66  20 61 6e 64 20 6f 6e 3f  |g it off and on?|",
-      " ","",
-      "Connection to localhost closed",
-      " ",
-      ""
-    ];
+      <div class="pr">whoami</div>
+      <div class="out">
+        Network Administrator &amp; Systems Architect<br>
+        <span class="dim">Calgary, Alberta</span>
+      </div>
 
-    function typeLine(text, lineFast = false, delay = 5) {
-      return new Promise(resolve => {
-        const line = document.createElement("div");
-        line.className = "line";
-        const contentSpan = document.createElement("span");
-        line.appendChild(contentSpan);
-        line.appendChild(cursor)
-        terminal.appendChild(line);
-       // terminal.appendChild(cursor);
+      <div class="pr">ls ~/specializations/</div>
+      <div class="out">
+        <span class="tag">802.11 a/b/g/n/ac/ax</span><span class="tag">Ethernet</span><span class="tag">Routing</span>
+        <span class="tag">Switching</span><span class="tag">Fiber Optic</span><span class="tag">Firewalls</span>
+        <span class="tag">Linux</span><span class="tag">BSD</span><span class="tag">WireGuard</span>
+        <span class="tag">IPsec</span><span class="tag">OSPF</span><span class="tag">BGP</span>
+        <span class="tag">802.1Q</span><span class="tag">STP/RSTP</span><span class="tag">RADIUS</span>
+      </div>
 
-        if (lineFast) {
-          line.innerHTML = text;
-          setTimeout(resolve, 500);
-        } else {
-          let j = 0;
-          function typeChar() {
-            if (j < text.length) {
-              contentSpan.textContent += text[j++];
-              setTimeout(typeChar, delay + Math.random() * 75);
-            } else {
-              resolve();
-            }
-          }
-          typeChar();
-        }
-      });
-    }
+      <div class="pr"><span class="cur">█</span></div>
 
-    async function printAll() {
-      terminal.appendChild(cursor);
-      await new Promise(r => setTimeout(r, 500));
-      for (let k = 0; k < lines.length; k++) {
-        if (lines[k] === "") await new Promise(r => setTimeout(r, 900));
-        const lineFast = lines[k].startsWith("SysOp") 
-        await typeLine(text = lines[k], lineFast);
+      <div class="foot">
+        // shibboleth [ˈʃɪbəlɛθ] — Judges 12:6<br>
+        // shibboleet [ˈʃɪbəlit] — XKCD &nbsp;806<br>
+        // &nbsp;—&nbsp; a word known only to the initiated<br>
+        // speak friend, and enter &nbsp;·&nbsp; <span style="letter-spacing:.05em">mail <span style="color:rgba(255,176,0,.55)">alex</span></span>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+// ── Uptime ────────────────────────────────────────────────
+const T0=Date.now(),upEl=document.getElementById('up');
+const tickUp=()=>{const s=(Date.now()-T0)/1e3|0,p=n=>String(n).padStart(2,'0');upEl.textContent=`${p(s/3600|0)}:${p(s%3600/60|0)}:${p(s%60)}`};
+setInterval(tickUp,1e3);tickUp();
+
+// ── Canvas ────────────────────────────────────────────────
+const cv=document.getElementById('c'),cx=cv.getContext('2d');
+let W,H;
+const rsz=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight};
+rsz();addEventListener('resize',rsz);
+
+// ── Util ──────────────────────────────────────────────────
+const R=n=>Math.random()*n|0;
+const h4=()=>R(65536).toString(16).padStart(4,'0');
+const h2=n=>n.toString(16).padStart(2,'0');
+const ip4=()=>{const t=R(3);return t<1?`10.${R(256)}.${R(256)}.${R(253)+1}`:t<2?`172.${R(16)+16}.${R(256)}.${R(253)+1}`:`192.168.${R(256)}.${R(253)+1}`};
+const ip6=()=>`fe80::${h4()}:${h4()}:${h4()}:${h4()}`;
+const mac=()=>[0,0,0,0,0,0].map(()=>h2(R(256))).join(':');
+const rp=()=>R(64511)+1024;
+const ts=()=>{const d=new Date(),p=n=>String(n).padStart(2,'0');return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${String(R(1e6)).padStart(6,'0')}`};
+
+// ── Nodes ─────────────────────────────────────────────────
+const NT=['HOST','AP','SW','RTR','FW','SRV'];
+const NS={HOST:2.5,AP:3.2,SW:4,RTR:4.8,FW:4.5,SRV:3.2};
+const NC=22;
+const nd=Array.from({length:NC},(_,i)=>{
+  const t=NT[R(NT.length)];
+  return {
+    x:Math.random()*innerWidth,
+    y:Math.random()*innerHeight,
+    vx:(Math.random()-.5)*.55,
+    vy:(Math.random()-.5)*.55,
+    ip:Math.random()<.18?ip6():ip4(),
+    ll:ip6(),  // link-local v6 for ICMPv6
+    mac:mac(),
+    t,
+    id:`${t}-${String(i+1).padStart(2,'0')}`,
+    sz:NS[t],
+    ph:Math.random()*6.2832
+  };
+});
+
+// ── Packet generation ─────────────────────────────────────
+const FK=['[S]','[S.]','[P.]','[.]','[F.]','[R]','[P]'];
+const DPORTS=[22,80,443,179,53,161,514,3389,8443,6514,123,389,636];
+const W11FRAMES=['Probe Req','Probe Resp','Beacon','Auth','Assoc Req','Deauth','Disassoc','RTS','CTS'];
+const RADTYPES=['Access-Request','Access-Accept','Access-Reject','Acct-Request','Acct-Response'];
+const BGPTYPES=['UPDATE','KEEPALIVE','OPEN','NOTIFICATION'];
+const OSPFTYPES=['Hello','DB Desc','LS Request','LS Update','LS Ack'];
+
+const PKT=(a,b)=>{
+  const k=R(13),t=ts();
+  // TCP (most common)
+  if(k<3)return`${t} IP ${a.ip}.${rp()} > ${b.ip}.${DPORTS[R(DPORTS.length)]}: Flags ${FK[R(FK.length)]}, seq ${R(1<<20)}:${R(1<<20)}, ack ${R(1<<20)}, win ${R(65535)}, len ${R(1450)}`;
+  // UDP
+  if(k<4)return`${t} IP ${a.ip}.${rp()} > ${b.ip}.${rp()}: UDP, length ${R(512)+1}`;
+  // ARP request
+  if(k<5)return`${t} ARP, Request who-has ${b.ip} tell ${a.ip}, length 28`;
+  // ARP reply
+  if(k<6)return`${t} ARP, Reply ${b.ip} is-at ${b.mac}, length 28`;
+  // ICMP
+  if(k<7)return`${t} IP ${a.ip} > ${b.ip}: ICMP echo ${R(2)?'request':'reply'}, id ${R(65535)}, seq ${R(2000)}, length 64`;
+  // OSPF
+  if(k<8)return`${t} OSPF ${OSPFTYPES[R(OSPFTYPES.length)]}, Router-ID ${a.ip}, Area 0.0.0.0, length ${R(80)+20}`;
+  // 802.11
+  if(k<9)return`${t} 802.11 ${W11FRAMES[R(W11FRAMES.length)]} (${a.mac} > ${b.mac}) SN:${R(4096)} Flags=...`;
+  // BGP
+  if(k<10)return`${t} BGP ${BGPTYPES[R(BGPTYPES.length)]} ${a.ip} > ${b.ip} AS${R(64511)+1024} len ${R(200)+20}`;
+  // ICMPv6 NDP
+  if(k<11)return`${t} IP6 ${a.ll} > ff02::2: ICMP6, router ${R(2)?'solicitation':'advertisement'}, length ${R(40)+16}`;
+  // RADIUS
+  if(k<12)return`${t} IP ${a.ip}.${rp()} > ${b.ip}.1812: RADIUS, ${RADTYPES[R(RADTYPES.length)]}, id ${R(255)}, len ${R(120)+20}`;
+  // STP BPDU
+  return`${t} STP 802.1d, Config, Flags [none], bridge-id 8000.${a.mac}, port-id ${R(65535).toString(16).padStart(4,'0')}, len 35`;
+};
+
+const PL=36; // visible packet lines
+const nextPkt=()=>{const a=nd[R(NC)];let b;do{b=nd[R(NC)];}while(b===a);return PKT(a,b)};
+let pkts=Array.from({length:PL},nextPkt);
+
+// ── Main loop ─────────────────────────────────────────────
+let fr=0;
+(function loop(){
+  requestAnimationFrame(loop);
+  fr++;
+
+  //sleep(0.1);
+  // Fade to black (trail persistence)
+  cx.fillStyle='rgba(0,0,0,.13)';
+  cx.fillRect(0,0,W,H);
+
+  // ── Connection lines ──
+  cx.lineWidth=.65;
+  const maxDist=400;
+
+  for(let i=0;i<NC;i++){
+    const a=nd[i];
+    for(let j=i+1;j<NC;j++){
+      const b=nd[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy);
+      if(d<maxDist){
+        // Slightly brighter near connection midpoint threshold
+        const alpha=(1-d/maxDist)*(1-d/maxDist)*.24;
+        cx.strokeStyle=`rgba(255,176,0,${alpha})`;
+        cx.beginPath();cx.moveTo(a.x,a.y);cx.lineTo(b.x,b.y);cx.stroke();
       }
     }
+  }
 
-    window.onload = () => printAll();
-  </script>
+  // ── Node physics + draw ──
+  cx.textBaseline='middle';
+  cx.font='15px "Courier New"';
+  for(const n of nd){
+    // Pairwise repulsion
+    for(const m of nd){
+      if(m===n)continue;
+      const dx=n.x-m.x,dy=n.y-m.y,d2=dx*dx+dy*dy;
+      if(d2>0.1&&d2<400){ // 80px radius
+        const d=Math.sqrt(d2),f=.013*(80-d)/d;
+        n.vx+=dx*f;n.vy+=dy*f;
+      }
+    }
+    // Soft edge repulsion (wall bounce)
+    const pad=30;
+    if(n.x<pad)n.vx+=.09*(pad-n.x)/pad;
+    else if(n.x>W-pad)n.vx-=.09*(n.x-(W-pad))/pad;
+    if(n.y<pad)n.vy+=.09*(pad-n.y)/pad;
+    else if(n.y>H-pad)n.vy-=.09*(n.y-(H-pad))/pad;
+    // Damping
+    n.vx*=.983;n.vy*=.983;
+    // Speed cap
+    const sp=Math.hypot(n.vx,n.vy);
+    if(sp>.92){n.vx=n.vx/sp*.92;n.vy=n.vy/sp*.92;}
+    // Integrate
+    n.x+=n.vx;n.y+=n.vy;
+    // Clamp
+    n.x=Math.max(5,Math.min(W-5,n.x));
+    n.y=Math.max(5,Math.min(H-5,n.y));
+
+    // Draw: pulsing dot
+    const pulse=.48+.38*Math.sin(fr*.024+n.ph);
+    cx.fillStyle=`rgba(255,176,0,${pulse})`;
+    cx.beginPath();cx.arc(n.x,n.y,n.sz,0,6.2832);cx.fill();
+    
+    // Speed bumps
+    if(sp<0.4){
+      n.vx=n.vx+(Math.random()-0.5)*2;
+      n.vy=n.vy+(Math.random()-0.5)*2;
+    }
+
+    // Node label
+    cx.fillStyle='rgba(255,176,0,.38)';
+    cx.fillText(n.id,n.x+n.sz+4,n.y);
+  }
+
+  // ── Packet capture scroll ──
+  // Add a new line every 18 frames (~3.3 lines/sec at 60fps)
+  if(fr%30===0){pkts.shift();pkts.push(nextPkt());}
+
+  cx.textBaseline='alphabetic';
+  cx.font='14px "Courier New"';
+  const lh=13,topY=H-PL*lh-8;
+  for(let i=0;i<PL;i++){
+    // Quadratic fade: oldest lines are nearly invisible, newest pop slightly
+    const a=(i/PL)*(i/PL)*.16;
+    cx.fillStyle=`rgba(255,176,0,${a})`;
+    cx.fillText(pkts[i],10,topY+i*lh);
+  }
+})();
+</script>
 </body>
 </html>
