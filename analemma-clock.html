@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analemma Clock — Calgary, AB</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-void:      #080b10;
+    --bg-panel:     #0d1219;
+    --bg-panel-alt: #121a25;
+    --line-minor:   #1b2634;
+    --line-major:   #2c3d51;
+    --trace-night:  #2b4055;
+    --trace-day:    #7fd6de;
+    --trace-day-glow: rgba(127,214,222,0.35);
+    --sun:          #f5a83f;
+    --sun-glow:     #ffce85;
+    --moon:         #b9c6d6;
+    --text-hi:      #e6edf3;
+    --text-lo:      #8195aa;
+    --text-faint:   #4c5c70;
+    --accent:       #f5a83f;
+    --radius-outer: 202.5;
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; min-height:100%;
+    background:
+      radial-gradient(ellipse at 50% -10%, #101823 0%, var(--bg-void) 55%);
+    color:var(--text-hi);
+    font-family:'Space Grotesk',sans-serif;
+  }
+  .mono{ font-family:'JetBrains Mono',monospace; }
+
+  .wrap{
+    max-width:1080px;
+    margin:0 auto;
+    padding:28px 20px 60px;
+  }
+
+  /* ---------- header ---------- */
+  header{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    flex-wrap:wrap;
+    gap:8px 20px;
+    padding-bottom:16px;
+    border-bottom:1px solid var(--line-major);
+    margin-bottom:24px;
+  }
+  header .title{
+    font-weight:600;
+    font-size:15px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--text-hi);
+  }
+  header .title span{ color:var(--accent); }
+  header .coords{
+    font-size:12px;
+    letter-spacing:0.04em;
+    color:var(--text-lo);
+  }
+
+  /* ---------- main layout ---------- */
+  main{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 300px;
+    gap:28px;
+    align-items:start;
+  }
+  @media (max-width:760px){
+    main{ grid-template-columns:1fr; }
+  }
+
+  .scope-panel{
+    background:var(--bg-panel);
+    border:1px solid var(--line-minor);
+    border-radius:6px;
+    padding:14px;
+  }
+  .scope-panel svg{ width:100%; height:auto; display:block; }
+
+  .scope-caption{
+    display:flex;
+    justify-content:space-between;
+    font-size:11px;
+    color:var(--text-faint);
+    letter-spacing:0.03em;
+    padding:10px 4px 0;
+  }
+
+  /* ---------- readout panel ---------- */
+  .readout{
+    background:var(--bg-panel);
+    border:1px solid var(--line-minor);
+    border-radius:6px;
+    padding:20px;
+    display:flex;
+    flex-direction:column;
+    gap:18px;
+  }
+  .clock-block{
+    padding-bottom:16px;
+    border-bottom:1px solid var(--line-minor);
+  }
+  .clock-block .time{
+    font-size:34px;
+    font-weight:600;
+    line-height:1;
+    letter-spacing:0.01em;
+    font-variant-numeric:tabular-nums;
+  }
+  .clock-block .date{
+    margin-top:6px;
+    font-size:12.5px;
+    color:var(--text-lo);
+    letter-spacing:0.03em;
+  }
+  .clock-block .tz{
+    color:var(--accent);
+  }
+
+  .stat-grid{
+    display:grid;
+    grid-template-columns:1fr auto;
+    row-gap:11px;
+    column-gap:10px;
+    font-size:13px;
+  }
+  .stat-grid .lbl{
+    color:var(--text-lo);
+    letter-spacing:0.06em;
+    font-size:11px;
+    text-transform:uppercase;
+    align-self:center;
+  }
+  .stat-grid .val{
+    font-variant-numeric:tabular-nums;
+    text-align:right;
+    color:var(--text-hi);
+  }
+  .stat-grid .val.dim{ color:var(--text-lo); font-size:12px; }
+
+  .legend{
+    display:flex;
+    flex-direction:column;
+    gap:7px;
+    font-size:11px;
+    color:var(--text-lo);
+    padding-top:4px;
+    border-top:1px solid var(--line-minor);
+  }
+  .legend .row{ display:flex; align-items:center; gap:8px; }
+  .legend .swatch{ width:14px; height:2px; flex:none; }
+  .legend .dot{ width:8px; height:8px; border-radius:50%; flex:none; }
+
+  /* ---------- footer controls ---------- */
+  footer{
+    margin-top:22px;
+    background:var(--bg-panel);
+    border:1px solid var(--line-minor);
+    border-radius:6px;
+    padding:16px 20px;
+  }
+  .control-row{
+    display:flex;
+    align-items:center;
+    gap:16px;
+  }
+  .control-row .cap{
+    font-size:11px;
+    color:var(--text-lo);
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    white-space:nowrap;
+  }
+  input[type=range]{
+    flex:1;
+    -webkit-appearance:none;
+    appearance:none;
+    height:3px;
+    background:var(--line-major);
+    border-radius:2px;
+    outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    width:14px; height:14px;
+    border-radius:50%;
+    background:var(--accent);
+    cursor:pointer;
+    box-shadow:0 0 8px var(--sun-glow);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:14px; height:14px; border:none; border-radius:50%;
+    background:var(--accent); cursor:pointer;
+    box-shadow:0 0 8px var(--sun-glow);
+  }
+  #scrubTime{
+    font-size:12.5px;
+    color:var(--text-hi);
+    min-width:64px;
+    text-align:right;
+  }
+  #liveBtn{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    background:var(--bg-panel-alt);
+    color:var(--text-lo);
+    border:1px solid var(--line-major);
+    border-radius:4px;
+    padding:8px 14px;
+    cursor:pointer;
+    white-space:nowrap;
+    transition:color .15s, border-color .15s;
+  }
+  #liveBtn.is-live{
+    color:var(--accent);
+    border-color:var(--accent);
+  }
+  #liveBtn:hover{ color:var(--text-hi); }
+  .foot-note{
+    margin-top:10px;
+    font-size:11.5px;
+    color:var(--text-faint);
+    line-height:1.5;
+  }
+
+  /* svg internals */
+  .tick-major{ stroke:var(--line-major); stroke-width:1; }
+  .tick-minor{ stroke:var(--line-minor); stroke-width:1; }
+  .ring{ fill:none; stroke:var(--line-minor); stroke-width:1; }
+  .ring-horizon{ fill:none; stroke:var(--line-major); stroke-width:1.25; }
+  .compass-label{ fill:var(--text-lo); font-family:'JetBrains Mono',monospace; font-size:13px; }
+  .ring-label{ fill:var(--text-faint); font-family:'JetBrains Mono',monospace; font-size:9.5px; }
+  .month-tick{ fill:var(--text-faint); }
+  .month-label{ fill:var(--text-faint); font-family:'JetBrains Mono',monospace; font-size:9px; }
+  .curve-night{ fill:none; stroke:var(--trace-night); stroke-width:1.1; }
+  .curve-day{ fill:none; stroke:var(--trace-day); stroke-width:1.6; filter:drop-shadow(0 0 3px var(--trace-day-glow)); }
+  .hand{ stroke:var(--accent); stroke-width:1; opacity:0.55; }
+  .sun-dot-glow{ fill:var(--sun-glow); opacity:0.35; }
+  .sun-dot{ fill:var(--sun); }
+  .hit{ fill:transparent; }
+
+  @media (prefers-reduced-motion: no-preference){
+    .sun-dot, .sun-dot-glow, .hand{
+      transition: cx .9s linear, cy .9s linear, x2 .9s linear, y2 .9s linear;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="title">Analemma <span>Clock</span></div>
+    <div class="coords mono">51.121° N &nbsp;114.021° W &nbsp;· &nbsp;Calgary, AB</div>
+  </header>
+
+  <main>
+    <div class="scope-panel">
+      <svg viewBox="0 0 600 600" id="scope" xmlns="http://www.w3.org/2000/svg">
+        <!-- static grid + curve + dot layers get built by JS -->
+      </svg>
+      <div class="scope-caption mono">
+        <span>ZENITH AT CENTER · HORIZON AT RING</span>
+        <span id="curveLabel">CURVE — TODAY'S CLOCK TIME, ALL 365 DAYS</span>
+      </div>
+    </div>
+
+    <div class="readout">
+      <div class="clock-block">
+        <div class="time mono" id="bigClock">--:--:--</div>
+        <div class="date mono"><span id="bigDate">—</span> · <span class="tz" id="tzAbbr">—</span></div>
+      </div>
+
+      <div class="stat-grid mono">
+        <div class="lbl">Altitude</div>      <div class="val" id="statAlt">—</div>
+        <div class="lbl">Azimuth</div>       <div class="val" id="statAz">—</div>
+        <div class="lbl">Declination</div>   <div class="val" id="statDecl">—</div>
+        <div class="lbl">Equation of time</div><div class="val" id="statEqt">—</div>
+        <div class="lbl">Apparent solar time</div><div class="val" id="statSolar">—</div>
+        <div class="lbl">Sunrise / sunset</div><div class="val dim" id="statRiseSet">—</div>
+        <div class="lbl">Day length</div>    <div class="val dim" id="statDaylen">—</div>
+      </div>
+
+      <div class="legend">
+        <div class="row"><span class="swatch" style="background:var(--trace-day)"></span> Sun above horizon this date range</div>
+        <div class="row"><span class="swatch" style="background:var(--trace-night)"></span> Sun below horizon</div>
+        <div class="row"><span class="dot" style="background:var(--sun)"></span> Live / scrubbed position</div>
+        <div class="row"><span class="dot" style="background:var(--sun); opacity:0.4"></span> Trail — last ~3 months, same clock time</div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="control-row">
+      <span class="cap">Time of day</span>
+      <input type="range" id="scrubSlider" min="0" max="86399" step="1" value="0">
+      <span id="scrubTime" class="mono">--:--</span>
+      <button id="liveBtn" class="is-live">● Live</button>
+    </div>
+    <div class="foot-note">
+      The curve traced on the dial is the analemma for whatever clock time is shown — every date in the current
+      year, all observed at that same moment. Drag the slider to see the figure reshape at other times of day;
+      the shape is narrowest and most symmetric near local solar noon (around 12:35&nbsp;PM in Calgary) and
+      stretches out — sometimes dipping below the horizon for parts of the year — earlier or later in the day.
+      Press Live to return to the real-time position.
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- location ----------
+  const LAT = 51.121, LON = -114.021;
+  const TZ_NAME = 'America/Edmonton';
+
+  // ---------- validated solar position (NOAA low-precision algorithm) ----------
+  function solarPosition(dateUTC, lat, lon){
+    const jd = dateUTC.getTime()/86400000 + 2440587.5;
+    const T = (jd - 2451545.0)/36525.0;
+    const norm360 = x => ((x % 360)+360)%360;
+    const rad = d => d*Math.PI/180, deg = r => r*180/Math.PI;
+
+    const L0 = norm360(280.46646 + T*(36000.76983 + T*0.0003032));
+    const M  = norm360(357.52911 + T*(35999.05029 - 0.0001537*T));
+    const e  = 0.016708634 - T*(0.000042037 + 0.0000001267*T);
+    const Mr = rad(M);
+
+    const C = Math.sin(Mr)*(1.914602 - T*(0.004817+0.000014*T))
+            + Math.sin(2*Mr)*(0.019993-0.000101*T)
+            + Math.sin(3*Mr)*0.000289;
+
+    const trueLong = L0 + C;
+    const Omega = 125.04 - 1934.136*T;
+    const apparentLong = trueLong - 0.00569 - 0.00478*Math.sin(rad(Omega));
+
+    const meanObliq = 23 + (26 + (21.448 - T*(46.815+T*(0.00059-T*0.001813)))/60)/60;
+    const obliqCorr = meanObliq + 0.00256*Math.cos(rad(Omega));
+
+    const decl = deg(Math.asin(Math.sin(rad(obliqCorr))*Math.sin(rad(apparentLong))));
+
+    const y = Math.pow(Math.tan(rad(obliqCorr)/2), 2);
+    const eqtime = 4*deg(
+      y*Math.sin(2*rad(L0))
+      - 2*e*Math.sin(Mr)
+      + 4*e*y*Math.sin(Mr)*Math.cos(2*rad(L0))
+      - 0.5*y*y*Math.sin(4*rad(L0))
+      - 1.25*e*e*Math.sin(2*Mr)
+    );
+
+    const timeMin = dateUTC.getUTCHours()*60 + dateUTC.getUTCMinutes() + dateUTC.getUTCSeconds()/60;
+    let trueSolarTime = (timeMin + eqtime + 4*lon) % 1440;
+    if (trueSolarTime < 0) trueSolarTime += 1440;
+
+    const hourAngle = trueSolarTime/4 - 180;
+
+    const latR = rad(lat), declR = rad(decl), haR = rad(hourAngle);
+    let cosZenith = Math.sin(latR)*Math.sin(declR) + Math.cos(latR)*Math.cos(declR)*Math.cos(haR);
+    cosZenith = Math.max(-1, Math.min(1, cosZenith));
+    const zenith = deg(Math.acos(cosZenith));
+    const altitude = 90 - zenith;
+
+    const zenithR = rad(zenith);
+    let azimuth;
+    if (Math.abs(Math.sin(zenithR)) < 1e-6){
+      azimuth = lat >= 0 ? 180 : 0;
+    } else {
+      let cosAz = (Math.sin(latR)*Math.cos(zenithR) - Math.sin(declR)) / (Math.cos(latR)*Math.sin(zenithR));
+      cosAz = Math.max(-1, Math.min(1, cosAz));
+      const acosAz = deg(Math.acos(cosAz));
+      azimuth = hourAngle > 0 ? norm360(acosAz+180) : norm360(540-acosAz);
+    }
+
+    return { altitude, azimuth, declination:decl, eqtime, hourAngle };
+  }
+
+  // ---------- Alberta Time (permanent UTC-6, no seasonal change as of Nov 2026) ----------
+  function tzOffsetHours(year, month, day){
+    return -6;
+  }
+
+  // ---------- derive Calgary civil time by pure arithmetic ----------
+  // Deliberately NOT using Intl.DateTimeFormat with an IANA timeZone here:
+  // that depends on the browser shipping full ICU timezone data, and some
+  // minimal/embedded browsers (kiosk displays, stripped-down builds, etc.)
+  // silently fall back to UTC instead of throwing when it's missing. The
+  // DST rule above is plain date math with no ICU dependency, so we reuse
+  // it directly against the UTC instant instead of asking the platform.
+  function getCalgaryParts(date){
+    // First-pass DST guess from the UTC calendar date, then shift and
+    // re-derive the local calendar date/time from that. This can only be
+    // off during the ~1hr window around the two transition instants twice
+    // a year, which is well within the precision this page cares about.
+    const guessOffset = tzOffsetHours(date.getUTCFullYear(), date.getUTCMonth()+1, date.getUTCDate());
+    const shifted = new Date(date.getTime() + guessOffset*3600*1000);
+    return {
+      year: shifted.getUTCFullYear(),
+      month: shifted.getUTCMonth()+1,
+      day: shifted.getUTCDate(),
+      hour: shifted.getUTCHours(),
+      minute: shifted.getUTCMinutes(),
+      second: shifted.getUTCSeconds()
+    };
+  }
+  function getTzAbbr(cal){
+    return 'MDT'; // permanent Alberta Time, UTC-6 year-round
+  }
+
+  // ---------- geometry: zenith angle -> radius, azimuth -> angle (N up, clockwise) ----------
+  const CX = 300, CY = 300;
+  const MAX_ZENITH = 120;   // plot extends to 30 deg below horizon
+  const MAX_R = 270;
+  const HORIZON_R = 90/MAX_ZENITH*MAX_R; // 202.5
+
+  function project(alt, az){
+    let zenith = 90 - alt;
+    if (zenith < 0) zenith = 0;
+    if (zenith > MAX_ZENITH) zenith = MAX_ZENITH;
+    const r = zenith/MAX_ZENITH*MAX_R;
+    const a = az*Math.PI/180;
+    return { x: CX + r*Math.sin(a), y: CY - r*Math.cos(a) };
+  }
+
+  // ---------- build the recent trail: last N calendar days, at today's civil clock time ----------
+  // Walks backward from today's real date using raw UTC millisecond math,
+  // NOT an index slice of buildYearCurve()'s array — that array only spans
+  // Jan1-Dec31 of the current year, so slicing backward from an index near
+  // day 0 (e.g. checking this in January) would wrap into December of the
+  // SAME year (the future) instead of December of the PREVIOUS year (the
+  // actual past). Walking real dates avoids that entirely.
+  function buildTrail(year, month, day, civilHour, civilMinute, civilSecond, tailDays){
+    const pts = [];
+    const todayUTCMidnight = Date.UTC(year, month-1, day);
+    for(let back = tailDays; back >= 0; back--){
+      const dUTC = new Date(todayUTCMidnight - back*86400000);
+      const Y = dUTC.getUTCFullYear(), Mo = dUTC.getUTCMonth()+1, Da = dUTC.getUTCDate();
+      const offset = tzOffsetHours(Y, Mo, Da);
+      const utcInstant = new Date(Date.UTC(Y, Mo-1, Da, civilHour - offset, civilMinute, civilSecond));
+      const pos = solarPosition(utcInstant, LAT, LON);
+      pts.push({ daysAgo: back, alt: pos.altitude, az: pos.azimuth });
+    }
+    return pts; // oldest first, today (daysAgo=0) last
+  }
+  const TAIL_DAYS = 90;
+
+
+  function buildYearCurve(year, civilHour, civilMinute, civilSecond){
+    const isLeap = (year%4===0 && (year%100!==0 || year%400===0));
+    const daysInYear = isLeap ? 366 : 365;
+    const pts = [];
+    const jan1 = Date.UTC(year, 0, 1);
+    for(let doy=0; doy<daysInYear; doy++){
+      const dUTC = new Date(jan1);
+      dUTC.setUTCDate(dUTC.getUTCDate()+doy);
+      const Y = dUTC.getUTCFullYear(), Mo = dUTC.getUTCMonth()+1, Da = dUTC.getUTCDate();
+      const offset = tzOffsetHours(Y, Mo, Da);
+      const utcInstant = new Date(Date.UTC(Y, Mo-1, Da, civilHour - offset, civilMinute, civilSecond));
+      const pos = solarPosition(utcInstant, LAT, LON);
+      pts.push({ doy, month:Mo, day:Da, alt:pos.altitude, az:pos.azimuth,
+                 decl:pos.declination, eqtime:pos.eqtime, offset });
+    }
+    return pts;
+  }
+
+  // ---------- static SVG chrome (grid, compass, month ticks placeholder) ----------
+  const svg = document.getElementById('scope');
+  const NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs){
+    const e = document.createElementNS(NS, tag);
+    for(const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  const defs = el('defs', {});
+  const clip = el('clipPath', {id:'horizonClip'});
+  clip.appendChild(el('circle', {cx:CX, cy:CY, r:HORIZON_R}));
+  defs.appendChild(clip);
+  svg.appendChild(defs);
+
+  // outer bezel + panel fill
+  svg.appendChild(el('circle', {cx:CX, cy:CY, r:MAX_R+8, fill:'var(--bg-panel-alt)', stroke:'var(--line-major)', 'stroke-width':1}));
+  // night annulus (subtle darker tone beyond horizon)
+  svg.appendChild(el('circle', {cx:CX, cy:CY, r:MAX_R, fill:'#0a0f16'}));
+  svg.appendChild(el('circle', {cx:CX, cy:CY, r:HORIZON_R, fill:'#0f1621'}));
+
+  // altitude rings at 0/15/30/45/60/75 deg
+  [0,15,30,45,60,75].forEach(altDeg=>{
+    const zen = 90-altDeg;
+    const r = zen/MAX_ZENITH*MAX_R;
+    svg.appendChild(el('circle', {cx:CX, cy:CY, r, class: altDeg===0 ? 'ring-horizon':'ring'}));
+    const lbl = el('text', {x:CX+4, y:CY-r-3, class:'ring-label'});
+    lbl.textContent = altDeg+'°';
+    svg.appendChild(lbl);
+  });
+
+  // compass ticks: major every 90 (N/E/S/W), mid every 30, minor every 10
+  for(let a=0; a<360; a+=10){
+    const isCard = a%90===0, isMid = a%30===0;
+    const rOuter = MAX_R+8;
+    const rInner = isCard ? MAX_R-14 : (isMid ? MAX_R-9 : MAX_R-5);
+    const rad = a*Math.PI/180;
+    const x1 = CX+rOuter*Math.sin(rad), y1 = CY-rOuter*Math.cos(rad);
+    const x2 = CX+rInner*Math.sin(rad), y2 = CY-rInner*Math.cos(rad);
+    svg.appendChild(el('line', {x1,y1,x2,y2, class: isCard||isMid ? 'tick-major':'tick-minor'}));
+  }
+  const compassPts = [[0,'N'],[90,'E'],[180,'S'],[270,'W']];
+  compassPts.forEach(([a,label])=>{
+    const rad = a*Math.PI/180;
+    const r = MAX_R+22;
+    const x = CX+r*Math.sin(rad), y = CY-r*Math.cos(rad);
+    const t = el('text', {x, y:y+4, class:'compass-label', 'text-anchor':'middle'});
+    t.textContent = label;
+    svg.appendChild(t);
+  });
+
+  // curve layers (paths get their 'd' rewritten each update)
+  const curveNight = el('path', {class:'curve-night'});
+  const curveDay = el('path', {class:'curve-day', 'clip-path':'url(#horizonClip)'});
+  svg.appendChild(curveNight);
+  svg.appendChild(curveDay);
+
+  // month tick group (rebuilt each update since curve reshapes)
+  const monthGroup = el('g', {id:'monthGroup'});
+  svg.appendChild(monthGroup);
+
+  // trail group: fading dots for the last TAIL_DAYS, rebuilt each update
+  const trailGroup = el('g', {id:'trailGroup'});
+  svg.appendChild(trailGroup);
+
+
+  // hand + dot (created once, positions updated via CSS-transitioned attrs)
+  const hand = el('line', {class:'hand', x1:CX, y1:CY, x2:CX, y2:CY});
+  const dotGlow = el('circle', {class:'sun-dot-glow', r:11, cx:CX, cy:CY});
+  const dot = el('circle', {class:'sun-dot', r:4.5, cx:CX, cy:CY});
+  svg.appendChild(hand);
+  svg.appendChild(dotGlow);
+  svg.appendChild(dot);
+
+  // center zenith marker
+  svg.appendChild(el('circle', {cx:CX, cy:CY, r:2, fill:'var(--line-major)'}));
+
+  // ---------- render ----------
+  const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const QUARTER_MONTHS = new Set([0,3,6,9]); // Jan Apr Jul Oct get labels
+
+  function render(points, todayIdx, trail){
+    let dNight = '', dDay = '';
+    points.forEach((p, i)=>{
+      const {x,y} = project(p.alt, p.az);
+      const cmd = (i===0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+      dNight += cmd; dDay += cmd;
+    });
+    // close the loop back to first point
+    if(points.length){
+      const {x,y} = project(points[0].alt, points[0].az);
+      dNight += 'L'+x.toFixed(1)+' '+y.toFixed(1);
+      dDay += 'L'+x.toFixed(1)+' '+y.toFixed(1);
+    }
+    curveNight.setAttribute('d', dNight);
+    curveDay.setAttribute('d', dDay);
+
+    // month ticks: first-of-month points
+    monthGroup.innerHTML = '';
+    points.forEach((p,i)=>{
+      if(p.day === 1){
+        const {x,y} = project(p.alt, p.az);
+        monthGroup.appendChild(el('circle', {cx:x, cy:y, r:1.6, class:'month-tick'}));
+        if(QUARTER_MONTHS.has(p.month-1)){
+          const t = el('text', {x:x+5, y:y-5, class:'month-label'});
+          t.textContent = MONTH_ABBR[p.month-1];
+          monthGroup.appendChild(t);
+        }
+      }
+    });
+
+    // sonar-style fading trail: last TAIL_DAYS, dimmest/smallest at the
+    // tail end, brightest/largest approaching today (today itself is
+    // covered by the main dot/glow below, so it's skipped here)
+    trailGroup.innerHTML = '';
+    if(trail){
+      trail.forEach(p=>{
+        if(p.daysAgo === 0) return;
+        const frac = 1 - p.daysAgo/TAIL_DAYS;       // 0 (oldest) -> 1 (most recent)
+        const opacity = Math.pow(frac, 1.8);
+        const r = 1 + 2.2*frac;
+        const {x,y} = project(p.alt, p.az);
+        const color = p.alt >= 0 ? 'var(--sun)' : 'var(--moon)';
+        trailGroup.appendChild(el('circle', {cx:x, cy:y, r:r.toFixed(2), fill:color, opacity:opacity.toFixed(3)}));
+      });
+    }
+
+    // today / scrub marker
+    const today = points[todayIdx];
+    const {x,y} = project(today.alt, today.az);
+    dot.setAttribute('cx', x); dot.setAttribute('cy', y);
+    dotGlow.setAttribute('cx', x); dotGlow.setAttribute('cy', y);
+    hand.setAttribute('x2', x); hand.setAttribute('y2', y);
+    dot.setAttribute('fill', today.alt >= 0 ? 'var(--sun)' : 'var(--moon)');
+    dotGlow.setAttribute('fill', today.alt >= 0 ? 'var(--sun-glow)' : 'var(--moon)');
+
+    return today;
+  }
+
+  function fmtHM(min){
+    min = ((min%1440)+1440)%1440;
+    const h = Math.floor(min/60), m = Math.round(min%60);
+    const hh = ((h+11)%12)+1;
+    const ap = h<12 ? 'AM':'PM';
+    return String(hh).padStart(2,'0')+':'+String(m).padStart(2,'0')+' '+ap;
+  }
+  function pad2(n){ return String(n).padStart(2,'0'); }
+
+  // ---------- state ----------
+  let live = true;
+  let scrubSeconds = 0; // seconds since local midnight, used only when !live
+
+  const bigClock = document.getElementById('bigClock');
+  const bigDate = document.getElementById('bigDate');
+  const tzAbbrEl = document.getElementById('tzAbbr');
+  const statAlt = document.getElementById('statAlt');
+  const statAz = document.getElementById('statAz');
+  const statDecl = document.getElementById('statDecl');
+  const statEqt = document.getElementById('statEqt');
+  const statSolar = document.getElementById('statSolar');
+  const statRiseSet = document.getElementById('statRiseSet');
+  const statDaylen = document.getElementById('statDaylen');
+  const slider = document.getElementById('scrubSlider');
+  const scrubTimeEl = document.getElementById('scrubTime');
+  const liveBtn = document.getElementById('liveBtn');
+  const curveLabel = document.getElementById('curveLabel');
+
+  function tick(){
+    const now = new Date();
+    const cal = getCalgaryParts(now);
+    let civH, civM, civS;
+
+    if(live){
+      civH = cal.hour; civM = cal.minute; civS = cal.second;
+      slider.value = civH*3600+civM*60+civS;
+    } else {
+      civH = Math.floor(scrubSeconds/3600);
+      civM = Math.floor((scrubSeconds%3600)/60);
+      civS = scrubSeconds%60;
+    }
+
+    const points = buildYearCurve(cal.year, civH, civM, civS);
+    // day-of-year index for "today" (Calgary calendar date)
+    const todayIdx = Math.round((Date.UTC(cal.year, cal.month-1, cal.day) - Date.UTC(cal.year,0,1))/86400000);
+    const trail = buildTrail(cal.year, cal.month, cal.day, civH, civM, civS, TAIL_DAYS);
+    const today = render(points, todayIdx, trail);
+
+    // digital clock display
+    if(live){
+      bigClock.textContent = pad2(cal.hour)+':'+pad2(cal.minute)+':'+pad2(cal.second);
+      tzAbbrEl.textContent = getTzAbbr(cal);
+      curveLabel.textContent = "CURVE — TODAY'S CLOCK TIME, ALL 365 DAYS";
+    } else {
+      bigClock.textContent = pad2(civH)+':'+pad2(civM)+':'+pad2(civS)+' *';
+      tzAbbrEl.textContent = 'preview';
+      curveLabel.textContent = 'CURVE — SLIDER TIME, ALL 365 DAYS';
+    }
+    const dateStr = new Date(Date.UTC(cal.year, cal.month-1, cal.day))
+      .toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', year:'numeric', timeZone:'UTC'});
+    bigDate.textContent = dateStr;
+
+    // readouts
+    statAlt.textContent = (today.alt>=0?'+':'') + today.alt.toFixed(2) + '°';
+    statAz.textContent = today.az.toFixed(2) + '°';
+    statDecl.textContent = (today.decl>=0?'+':'') + today.decl.toFixed(2) + '°';
+    statEqt.textContent = (today.eqtime>=0?'+':'') + today.eqtime.toFixed(1) + ' min';
+
+    // apparent solar time, recomputed from civil clock + equation of time
+    const civilMin = civH*60+civM+civS/60;
+    const trueSolarMin = ((civilMin + today.eqtime + 4*LON) % 1440 + 1440) % 1440;
+    statSolar.textContent = fmtHM(trueSolarMin);
+
+    // sunrise/sunset + day length from today's declination.
+    // Uses the conventional 90.833deg horizon threshold (34' atmospheric
+    // refraction + 16' solar semi-diameter) rather than the geometric 90deg,
+    // to match standard almanac sunrise/sunset times.
+    const latR = LAT*Math.PI/180, declR = today.decl*Math.PI/180;
+    const zenith0 = 90.833*Math.PI/180;
+    let cosH0 = (Math.cos(zenith0) - Math.sin(latR)*Math.sin(declR)) / (Math.cos(latR)*Math.cos(declR));
+    cosH0 = Math.max(-1, Math.min(1, cosH0));
+    const H0 = Math.acos(cosH0)*180/Math.PI; // degrees
+    const solarNoonMin = 720 - today.eqtime - 4*LON + 60*today.offset;
+    const sunriseMin = solarNoonMin - 4*H0;
+    const sunsetMin = solarNoonMin + 4*H0;
+    statRiseSet.textContent = fmtHM(sunriseMin) + ' — ' + fmtHM(sunsetMin);
+    const dayLenMin = 8*H0;
+    statDaylen.textContent = Math.floor(dayLenMin/60)+'h '+Math.round(dayLenMin%60)+'m';
+
+    if(live) scrubTimeEl.textContent = fmtHM(civH*60+civM);
+  }
+
+  slider.addEventListener('input', ()=>{
+    live = false;
+    liveBtn.classList.remove('is-live');
+    liveBtn.textContent = '○ Preview';
+    scrubSeconds = parseInt(slider.value, 10);
+    scrubTimeEl.textContent = fmtHM(Math.floor(scrubSeconds/60));
+    tick();
+  });
+  liveBtn.addEventListener('click', ()=>{
+    live = true;
+    liveBtn.classList.add('is-live');
+    liveBtn.textContent = '● Live';
+    tick();
+  });
+
+  tick();
+  setInterval(()=>{ if(live) tick(); }, 1000);
+
+})();
+</script>
+</body>
+</html>
