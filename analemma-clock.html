@@ -4,9 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Analemma Clock — Calgary, AB</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg-void:      #080b10;
@@ -16,7 +13,6 @@
     --line-major:   #2c3d51;
     --trace-night:  #2b4055;
     --trace-day:    #7fd6de;
-    --trace-day-glow: rgba(127,214,222,0.35);
     --sun:          #f5a83f;
     --sun-glow:     #ffce85;
     --moon:         #b9c6d6;
@@ -24,7 +20,7 @@
     --text-lo:      #8195aa;
     --text-faint:   #4c5c70;
     --accent:       #f5a83f;
-    --radius-outer: 202.5;
+    --mono: ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   }
   *{ box-sizing:border-box; }
   html,body{
@@ -32,9 +28,9 @@
     background:
       radial-gradient(ellipse at 50% -10%, #101823 0%, var(--bg-void) 55%);
     color:var(--text-hi);
-    font-family:'Space Grotesk',sans-serif;
+    font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
   }
-  .mono{ font-family:'JetBrains Mono',monospace; }
+  .mono{ font-family:var(--mono); }
 
   .wrap{
     max-width:1080px;
@@ -209,7 +205,7 @@
     text-align:right;
   }
   #liveBtn{
-    font-family:'JetBrains Mono',monospace;
+    font-family:var(--mono);
     font-size:11px;
     letter-spacing:0.08em;
     text-transform:uppercase;
@@ -239,22 +235,15 @@
   .tick-minor{ stroke:var(--line-minor); stroke-width:1; }
   .ring{ fill:none; stroke:var(--line-minor); stroke-width:1; }
   .ring-horizon{ fill:none; stroke:var(--line-major); stroke-width:1.25; }
-  .compass-label{ fill:var(--text-lo); font-family:'JetBrains Mono',monospace; font-size:13px; }
-  .ring-label{ fill:var(--text-faint); font-family:'JetBrains Mono',monospace; font-size:9.5px; }
+  .compass-label{ fill:var(--text-lo); font-family:var(--mono); font-size:13px; }
+  .ring-label{ fill:var(--text-faint); font-family:var(--mono); font-size:9.5px; }
   .month-tick{ fill:var(--text-faint); }
-  .month-label{ fill:var(--text-faint); font-family:'JetBrains Mono',monospace; font-size:9px; }
+  .month-label{ fill:var(--text-faint); font-family:var(--mono); font-size:9px; }
   .curve-night{ fill:none; stroke:var(--trace-night); stroke-width:1.1; }
-  .curve-day{ fill:none; stroke:var(--trace-day); stroke-width:1.6; filter:drop-shadow(0 0 3px var(--trace-day-glow)); }
+  .curve-day{ fill:none; stroke:var(--trace-day); stroke-width:1.8; }
   .hand{ stroke:var(--accent); stroke-width:1; opacity:0.55; }
   .sun-dot-glow{ fill:var(--sun-glow); opacity:0.35; }
   .sun-dot{ fill:var(--sun); }
-  .hit{ fill:transparent; }
-
-  @media (prefers-reduced-motion: no-preference){
-    .sun-dot, .sun-dot-glow, .hand{
-      transition: cx .9s linear, cy .9s linear, x2 .9s linear, y2 .9s linear;
-    }
-  }
 </style>
 </head>
 <body>
@@ -532,12 +521,27 @@
   svg.appendChild(curveNight);
   svg.appendChild(curveDay);
 
-  // month tick group (rebuilt each update since curve reshapes)
+  // month tick group: 12 dots + 12 labels, pre-allocated once. Positions
+  // (and which labels are non-empty) are updated in place each render()
+  // call instead of clearing/rebuilding the DOM every time.
   const monthGroup = el('g', {id:'monthGroup'});
+  const monthDots = [], monthLabels = [];
+  for(let m=0; m<12; m++){
+    const dot = el('circle', {r:1.6, class:'month-tick'});
+    const lbl = el('text', {class:'month-label'});
+    monthGroup.appendChild(dot); monthGroup.appendChild(lbl);
+    monthDots.push(dot); monthLabels.push(lbl);
+  }
   svg.appendChild(monthGroup);
 
-  // trail group: fading dots for the last TAIL_DAYS, rebuilt each update
+  // trail group: TAIL_DAYS dots, pre-allocated once for the same reason.
   const trailGroup = el('g', {id:'trailGroup'});
+  const trailDots = [];
+  for(let i=0; i<TAIL_DAYS; i++){
+    const d = el('circle', {r:0, opacity:0});
+    trailGroup.appendChild(d);
+    trailDots.push(d);
+  }
   svg.appendChild(trailGroup);
 
 
@@ -572,25 +576,30 @@
     curveNight.setAttribute('d', dNight);
     curveDay.setAttribute('d', dDay);
 
-    // month ticks: first-of-month points
-    monthGroup.innerHTML = '';
-    points.forEach((p,i)=>{
+    // month ticks: first-of-month points, written into the pre-allocated
+    // dot/label for that month index instead of rebuilding DOM nodes
+    points.forEach(p=>{
       if(p.day === 1){
         const {x,y} = project(p.alt, p.az);
-        monthGroup.appendChild(el('circle', {cx:x, cy:y, r:1.6, class:'month-tick'}));
-        if(QUARTER_MONTHS.has(p.month-1)){
-          const t = el('text', {x:x+5, y:y-5, class:'month-label'});
-          t.textContent = MONTH_ABBR[p.month-1];
-          monthGroup.appendChild(t);
+        const mi = p.month-1;
+        monthDots[mi].setAttribute('cx', x);
+        monthDots[mi].setAttribute('cy', y);
+        if(QUARTER_MONTHS.has(mi)){
+          monthLabels[mi].setAttribute('x', x+5);
+          monthLabels[mi].setAttribute('y', y-5);
+          monthLabels[mi].textContent = MONTH_ABBR[mi];
+        } else {
+          monthLabels[mi].textContent = '';
         }
       }
     });
 
     // sonar-style fading trail: last TAIL_DAYS, dimmest/smallest at the
     // tail end, brightest/largest approaching today (today itself is
-    // covered by the main dot/glow below, so it's skipped here)
-    trailGroup.innerHTML = '';
+    // covered by the main dot/glow below, so it's skipped here). Written
+    // into the pre-allocated pool rather than clearing/re-appending.
     if(trail){
+      let di = 0;
       trail.forEach(p=>{
         if(p.daysAgo === 0) return;
         const frac = 1 - p.daysAgo/TAIL_DAYS;       // 0 (oldest) -> 1 (most recent)
@@ -598,7 +607,12 @@
         const r = 1 + 2.2*frac;
         const {x,y} = project(p.alt, p.az);
         const color = p.alt >= 0 ? 'var(--sun)' : 'var(--moon)';
-        trailGroup.appendChild(el('circle', {cx:x, cy:y, r:r.toFixed(2), fill:color, opacity:opacity.toFixed(3)}));
+        const d = trailDots[di++];
+        d.setAttribute('cx', x);
+        d.setAttribute('cy', y);
+        d.setAttribute('r', r.toFixed(2));
+        d.setAttribute('fill', color);
+        d.setAttribute('opacity', opacity.toFixed(3));
       });
     }
 
@@ -626,6 +640,7 @@
   // ---------- state ----------
   let live = true;
   let scrubSeconds = 0; // seconds since local midnight, used only when !live
+  let haveRenderedOnce = false;
 
   const bigClock = document.getElementById('bigClock');
   const bigDate = document.getElementById('bigDate');
@@ -642,33 +657,21 @@
   const liveBtn = document.getElementById('liveBtn');
   const curveLabel = document.getElementById('curveLabel');
 
-  function tick(){
-    const now = new Date();
-    const cal = getCalgaryParts(now);
-    let civH, civM, civS;
-
-    if(live){
-      civH = cal.hour; civM = cal.minute; civS = cal.second;
-      slider.value = civH*3600+civM*60+civS;
-    } else {
-      civH = Math.floor(scrubSeconds/3600);
-      civM = Math.floor((scrubSeconds%3600)/60);
-      civS = scrubSeconds%60;
-    }
-
+  // The expensive path: 365 (curve) + 90 (trail) solarPosition() calls,
+  // each several sin/cos/asin/acos, plus the SVG/text writes. A 1-second
+  // shift in civil time moves the hour angle by 1/240deg -- invisible on
+  // the dial -- so this is deliberately NOT run every second; see tick().
+  function heavyUpdate(cal, civH, civM, civS){
     const points = buildYearCurve(cal.year, civH, civM, civS);
     // day-of-year index for "today" (Calgary calendar date)
     const todayIdx = Math.round((Date.UTC(cal.year, cal.month-1, cal.day) - Date.UTC(cal.year,0,1))/86400000);
     const trail = buildTrail(cal.year, cal.month, cal.day, civH, civM, civS, TAIL_DAYS);
     const today = render(points, todayIdx, trail);
 
-    // digital clock display
     if(live){
-      bigClock.textContent = pad2(cal.hour)+':'+pad2(cal.minute)+':'+pad2(cal.second);
       tzAbbrEl.textContent = getTzAbbr(cal);
       curveLabel.textContent = "CURVE — TODAY'S CLOCK TIME, ALL 365 DAYS";
     } else {
-      bigClock.textContent = pad2(civH)+':'+pad2(civM)+':'+pad2(civS)+' *';
       tzAbbrEl.textContent = 'preview';
       curveLabel.textContent = 'CURVE — SLIDER TIME, ALL 365 DAYS';
     }
@@ -705,26 +708,57 @@
     statRiseSet.textContent = fmtHM(sunriseMin) + ' — ' + fmtHM(sunsetMin);
     const dayLenMin = 8*H0;
     statDaylen.textContent = Math.floor(dayLenMin/60)+'h '+Math.round(dayLenMin%60)+'m';
-
-    if(live) scrubTimeEl.textContent = fmtHM(civH*60+civM);
   }
 
+  // The cheap path: string formatting only, no trig, no DOM rebuild.
+  // Runs every second so the digital clock still ticks smoothly; forces
+  // heavyUpdate() only at top-of-minute (civS===0), on the live/scrub
+  // transition, or on first paint.
+  function tick(forceHeavy){
+    const now = new Date();
+    const cal = getCalgaryParts(now);
+    let civH, civM, civS;
+
+    if(live){
+      civH = cal.hour; civM = cal.minute; civS = cal.second;
+      slider.value = civH*3600+civM*60+civS;
+      bigClock.textContent = pad2(civH)+':'+pad2(civM)+':'+pad2(civS);
+      scrubTimeEl.textContent = fmtHM(civH*60+civM);
+    } else {
+      civH = Math.floor(scrubSeconds/3600);
+      civM = Math.floor((scrubSeconds%3600)/60);
+      civS = scrubSeconds%60;
+      bigClock.textContent = pad2(civH)+':'+pad2(civM)+':'+pad2(civS)+' *';
+    }
+
+    if(forceHeavy || !live || !haveRenderedOnce || civS === 0){
+      heavyUpdate(cal, civH, civM, civS);
+      haveRenderedOnce = true;
+    }
+  }
+
+  // Slider drags can fire 'input' far faster than anything useful to the
+  // eye; coalesce to at most one heavyUpdate() per animation frame.
+  let scrubQueued = false;
   slider.addEventListener('input', ()=>{
     live = false;
     liveBtn.classList.remove('is-live');
     liveBtn.textContent = '○ Preview';
     scrubSeconds = parseInt(slider.value, 10);
     scrubTimeEl.textContent = fmtHM(Math.floor(scrubSeconds/60));
-    tick();
+    if(!scrubQueued){
+      scrubQueued = true;
+      requestAnimationFrame(()=>{ scrubQueued = false; tick(); });
+    }
   });
   liveBtn.addEventListener('click', ()=>{
     live = true;
     liveBtn.classList.add('is-live');
     liveBtn.textContent = '● Live';
-    tick();
+    tick(true);
   });
 
-  tick();
+  tick(true);
   setInterval(()=>{ if(live) tick(); }, 1000);
 
 })();
