@@ -275,9 +275,9 @@
 
     // ── Node types & hierarchy ──────────────────────────────────
     const NT = ['RTR', 'FW', 'SW', 'SRV', 'AP', 'HST']; // also the connection build order
-    const COUNT_RANGE = { RTR: [5, 11], FW: [7, 13], SW: [7, 17], SRV: [11, 21], AP: [15, 31], HST: [21, 37] };
-    const LINKS_NEEDED = { RTR: 3, FW: 2, SW: 2, SRV: 1, AP: 1, HST: 1 };
-    const CAND_TYPES = { RTR: ['RTR'], FW: ['RTR'], SW: ['FW', 'SW'], SRV: ['SW'], AP: ['SW', 'AP'], HST: ['AP'] };
+    const COUNT_RANGE = { RTR: [5, 11], FW: [7, 9], SW: [7, 17], SRV: [11, 21], AP: [5, 31], HST: [21, 37] };
+    const LINKS_NEEDED = { RTR: 3, FW: 2, SW: 1, SRV: 1, AP: 1, HST: 1 };
+    const CAND_TYPES = { RTR: ['RTR', 'FW'], FW: ['RTR'], SW: ['FW', 'SW'], SRV: ['SW'], AP: ['SW'], HST: ['AP'] };
     // Tether multiplier x wind-grid cell width = how far a node's leash lets it
     // stray from its spawn anchor. Linear interpolation across 5 hierarchy
     // tiers, RTR tightest, HST loosest; SRV/AP share a tier (parallel siblings
@@ -339,7 +339,7 @@
           lerp(u, grad(perm[AB + 1], x, y - 1, z - 1), grad(perm[BB + 1], x - 1, y - 1, z - 1))));
     }
 
-    const GRID_COLS = 24; // "hundreds, not thousands" of cells -- coarse on purpose
+    const GRID_COLS = 83; // "hundreds, not thousands" of cells -- coarse on purpose
     let GRID_ROWS, windGrid = null, windT = Math.random() * 1000;
     const WIND_T_STEP = .15, WIND_NOISE_SCALE = .35, WIND_DIR_Y_OFFSET = 500, WIND_MAG_OFFSET = 1000, MAX_WIND_MAG = 1;
     function buildWindGrid() {
@@ -411,6 +411,7 @@
       };
     }
     let nd = [];
+    let hstNodes = []; // cached HST subset -- particle spawn points; rebuilt only when nd changes
     function generateNodes() {
       nd = [];
       let idx = 0;
@@ -418,6 +419,7 @@
         const count = randRange(COUNT_RANGE[t]);
         for (let k = 0; k < count; k++)nd.push(makeNode(t, idx++));
       }
+      hstNodes = nd.filter(n => n.t === 'HST');
     }
 
     // ── connectNearest(): pool = 3 nearest eligible candidates, draw up to
@@ -459,19 +461,41 @@
       for (const n of nd) n.degree = n.upstream.length + n.downstream.length;
     }
 
-    // ── Physics: wind + attraction + tether spring-back, while the 10s
-    // window is active. Tunable constants up top for easy adjustment.
+    // ── Physics: wind + attraction + tether spring-back, while the
+    // PHYSICS_DURATION window is active. Tunable constants up top for easy
+    // adjustment.
     const K_ATTRACT = 140, MIN_ATTRACT_D = 12; // attraction: K/d^2, clamped near d=0
     const K_TETHER = .06;                   // spring constant past tetherLength
     const K_WIND = 2.2;                     // wind force multiplier
-    const DAMPING = .90, MAX_SPEED = 4;
-    function applyForces(n) {
+    const DAMPING = .90, MAX_SPEED = 2;
+    // Steady-state force->velocity ratio implied by the damping recurrence above
+    // (v_ss = f*DAMPING/(1-DAMPING) for a constant force f) -- reused below by
+    // the particle steering system so it converges to a chosen cruise speed
+    // without introducing a second set of tuning constants.
+    const DAMPING_SS = DAMPING / (1 - DAMPING);
+
+    // Node-felt wind decay: the wind force nodes themselves feel dies off to 0
+    // within the first WIND_FELT_DECAY_FRAC of PHYSICS_DURATION, so the layout
+    // settles under attraction/tether alone for the remainder of the window.
+    // Cubic ease-out (1-t)^3: falls off hardest right away rather than
+    // lingering, and hits exactly 0 at the cutoff instead of asymptoting.
+    const WIND_FELT_DECAY_FRAC = .10;
+    let physicsStartTime = 0;
+    function windFeltFactor(now) {
+      const dur = PHYSICS_DURATION * WIND_FELT_DECAY_FRAC;
+      const t = (now - physicsStartTime) / dur;
+      if (t >= 1) return 0;
+      const k = 1 - Math.max(0, t);
+      return k * k * k;
+    }
+
+    function applyForces(n, windMult) {
       let fx = 0, fy = 0;
       const w = sampleWind(n.x, n.y);
-      fx += w.vx * K_WIND; fy += w.vy * K_WIND;
+      fx += w.vx * K_WIND * windMult; fy += w.vy * K_WIND * windMult;
       for (const nb of n.upstream) {
         const dx = nb.x - n.x, dy = nb.y - n.y, d = Math.max(Math.hypot(dx, dy), MIN_ATTRACT_D);
-        const mag = K_ATTRACT / (d * d);
+        const mag = K_ATTRACT / (d);
         fx += mag * (dx / d); fy += mag * (dy / d);
       }
       const ax = n.x - n.anchorX, ay = n.y - n.anchorY, ad = Math.hypot(ax, ay);
@@ -485,6 +509,145 @@
       n.x += n.vx; n.y += n.vy;
     }
 
+    // ── Particles: HST-spawned motes that ride the wind hierarchy-ward
+    // (upstream, towards RTR), then hierarchy-outward (downstream, back
+    // towards the edge), then go feral (unconstrained drift) until they burn
+    // out. Deliberately its own function rather than reusing applyForces()
+    // wholesale -- particles need direction-aware wind reversal and a
+    // calibrated per-edge cruise speed that node physics has no concept of --
+    // but every constant it leans on (K_WIND, DAMPING, MAX_SPEED, DAMPING_SS,
+    // sampleWind, lerp, dist, R) is pulled straight from the systems above.
+    const PARTICLE_CAPACITY = 1023;          // token-bucket capacity == hard cap on live particles
+    const PARTICLE_SAT = 90, PARTICLE_LIGHT = 74; // brighter/more saturated than node dots -- "bright HST" theme
+    const PARTICLE_RADIUS = 1.6;
+    const PARTICLE_EDGE_DIST_SHORT = 40;     // px, guess at a "short hop" connection length
+    const PARTICLE_EDGE_DIST_LONG = 500;     // px, mirrors VISUAL_MAX_DIST's far-distance reference
+    const EDGE_TIME_MIN = .1, EDGE_TIME_MAX = 5; // seconds to traverse a short vs. long connection
+    const ASSUME_FPS = 60;                   // frame-rate assumption, matches the rest of the file's per-frame (not per-second) constants
+    const REACH_PAD = 7;                     // px beyond a node's own radius that counts as "arrived"
+
+    let particles = [];
+    let particleTokens = 0, spawnRate = R(50), spawnRateTimer = 0;
+
+    // Escalates phase forward (never backward) whenever the current node has
+    // no list to travel along -- the "upstream[]/downstream[] empty" edge
+    // case from spec, folded into one place so both spawn and mid-route
+    // transitions go through it.
+    function settleParticlePhase(p) {
+      if (p.phase === 'up' && !p.currentNode.upstream.length) p.phase = 'down';
+      if (p.phase === 'down' && !p.currentNode.downstream.length) p.phase = 'up';
+    }
+    // Calibrates cruise speed for the newly-chosen hop so short connections
+    // traverse in ~EDGE_TIME_MIN and long ones in ~EDGE_TIME_MAX, then derives
+    // the steering accel that converges to that speed under the *existing*
+    // DAMPING recurrence (see DAMPING_SS above) -- done once per hop, not
+    // per-frame, since CPU is the scarce resource here, not memory.
+    function calibrateEdge(p) {
+      const d = Math.max(dist(p, p.target), 1);
+      const norm = Math.min(1, Math.max(0, (d - PARTICLE_EDGE_DIST_SHORT) / (PARTICLE_EDGE_DIST_LONG - PARTICLE_EDGE_DIST_SHORT)));
+      const travelTime = lerp(norm, EDGE_TIME_MIN, EDGE_TIME_MAX);
+      p.maxSpeed = (d / travelTime) / ASSUME_FPS;
+      p.pullAccel = p.maxSpeed * DAMPING_SS;
+    }
+    function pickParticleTarget(p) {
+      const list = p.phase === 'up' ? p.currentNode.upstream : p.currentNode.downstream;
+      p.target = list[R(list.length)];
+      calibrateEdge(p);
+    }
+    function makeParticle() {
+      const home = hstNodes[R(hstNodes.length)];
+      const hue = TYPE_HUE.HST + (Math.random() * 240 - 30); // thematic HST hue, jittered for variety
+      const p = {
+        x: home.x, y: home.y, vx: 0, vy: 0,
+        age: 0, maxLifeTime: (90 + Math.random() * 120) * 1000, // 90-210s, decided at spawn
+        phase: 'up', currentNode: home, target: null,
+        maxSpeed: MAX_SPEED, pullAccel: 0, brightness: 1,
+        colorPrefix: `hsla(${hue},${PARTICLE_SAT}%,${PARTICLE_LIGHT}%,`
+      };
+      // Phase-step fractions of maxLifeTime, noisy around the guiding
+      // thresholds (40% / 80% / 98%) but monotonically ordered.
+      p.t1 = .40 + (Math.random() - .5) * .06;
+      p.t2 = Math.max(p.t1 + .12, .80 + (Math.random() - .5) * .08);
+      p.t3 = Math.max(p.t2 + .06, .98 + (Math.random() - .5) * .02);
+      settleParticlePhase(p);
+      if (p.phase === 'up' || p.phase === 'down') pickParticleTarget(p);
+      return p;
+    }
+
+    // Token bucket: refills at `spawnRate` particles/sec (re-rolled via
+    // R(200) roughly once a second for bursty, organic spawn character
+    // rather than a metronomic one), capped at PARTICLE_CAPACITY tokens.
+    // Live particle count is separately capped at PARTICLE_CAPACITY too, so
+    // a long idle stretch banking tokens can't burst past the pool ceiling.
+    function spawnParticles(dt) {
+      spawnRateTimer += dt;
+      if (spawnRateTimer >= 1) { spawnRateTimer -= 1; spawnRate = R(50); }
+      particleTokens = Math.min(PARTICLE_CAPACITY, particleTokens + spawnRate * dt);
+      while (particleTokens >= 1 && particles.length < PARTICLE_CAPACITY) {
+        particleTokens -= 1;
+        particles.push(makeParticle());
+      }
+    }
+
+    // Returns false when the particle has aged out (caller removes it).
+    function updateParticle(p, dt) {
+      // Lifetime burns faster the faster the particle is currently moving --
+      // 1x at rest, up to 3x at its own cruise speed -- so busy motes die
+      // young and lazy ones linger, while still bounding out near maxLifeTime
+      // at minimum.
+      const speed = Math.hypot(p.vx, p.vy);
+      const burn = 1 + 2 * Math.min(1, speed / (p.maxSpeed || MAX_SPEED));
+      p.age += dt * 1000 * burn;
+      const ageFrac = p.age / p.maxLifeTime;
+      if (ageFrac >= 1) return false;
+
+      // Time-based phase transitions (the empty-list transitions happen at
+      // arrival, below).
+      if (p.phase === 'up' && ageFrac >= p.t1) {
+        p.phase = 'down'; settleParticlePhase(p);
+        if (p.phase === 'up' || p.phase === 'down') pickParticleTarget(p); else p.target = null;
+      } else if (p.phase === 'down' && ageFrac >= p.t2) {
+        p.phase = 'drift'; p.target = null;
+      }
+      if (p.phase !== 'dying' && ageFrac >= p.t3) p.phase = 'dying';
+
+      // Movement: streaming phases steer toward target and reverse any wind
+      // component that would push the particle backwards; drifting/dying let
+      // wind steer freely.
+      const w = sampleWind(p.x, p.y);
+      let wvx = w.vx, wvy = w.vy, fx = 0, fy = 0;
+      if (p.phase === 'up' || p.phase === 'down') {
+        const dx = p.target.x - p.x, dy = p.target.y - p.y;
+        const d = Math.max(Math.hypot(dx, dy), MIN_ATTRACT_D);
+        const dirx = dx / d, diry = dy / d;
+        if (wvx * dirx + wvy * diry < 0) { wvx = -wvx; wvy = -wvy; }
+        fx += wvx * K_WIND + dirx * p.pullAccel;
+        fy += wvy * K_WIND + diry * p.pullAccel;
+      } else {
+        fx += wvx * K_WIND; fy += wvy * K_WIND;
+      }
+      p.vx = (p.vx + fx) * DAMPING; p.vy = (p.vy + fy) * DAMPING;
+      const sp = Math.hypot(p.vx, p.vy), cap = p.maxSpeed || MAX_SPEED;
+      if (sp > cap) { p.vx = p.vx / sp * cap; p.vy = p.vy / sp * cap; }
+      p.x += p.vx; p.y += p.vy;
+
+      // Arrival: hop to the next upstream/downstream target, or fall through
+      // to drift if the new current node has nowhere left to go.
+      if ((p.phase === 'up' || p.phase === 'down') && Math.hypot(p.target.x - p.x, p.target.y - p.y) < p.target.sz + REACH_PAD) {
+        p.currentNode = p.target;
+        settleParticlePhase(p);
+        if (p.phase === 'up' || p.phase === 'down') pickParticleTarget(p); else p.target = null;
+      }
+
+      // Brightness: full while streaming, fades to 60% over the drift phase,
+      // then fades quickly (front-loaded, sqrt curve) to 0 while dying.
+      if (p.phase === 'up' || p.phase === 'down') p.brightness = 1;
+      else if (p.phase === 'drift') p.brightness = 1 - .4 * Math.min(1, (ageFrac - p.t2) / (p.t3 - p.t2));
+      else { const df = Math.min(1, (ageFrac - p.t3) / (1 - p.t3)); p.brightness = .6 * (1 - Math.sqrt(df)); }
+
+      return true;
+    }
+
     // ── Packet generation ─────────────────────────────────────
     const FK = ['[S]', '[S.]', '[P.]', '[.]', '[F.]', '[R]', '[P]'];
     const DPORTS = [22, 80, 443, 179, 53, 161, 514, 3389, 8443, 6514, 123, 389, 636];
@@ -494,27 +657,27 @@
     const OSPFTYPES = ['Hello', 'DB Desc', 'LS Request', 'LS Update', 'LS Ack'];
 
     const PKT = (a, b) => {
-      const k = R(13), t = ts();
+      const packetType = R(13), t = ts();
       // TCP (most common)
-      if (k < 3) return `${t} IP ${a.ip}.${rp()} > ${b.ip}.${DPORTS[R(DPORTS.length)]}: Flags ${FK[R(FK.length)]}, seq ${R(1 << 20)}:${R(1 << 20)}, ack ${R(1 << 20)}, win ${R(65535)}, len ${R(1450)}`;
+      if (packetType < 3) return `${t} IP ${a.ip}.${rp()} > ${b.ip}.${DPORTS[R(DPORTS.length)]}: Flags ${FK[R(FK.length)]}, seq ${R(1 << 20)}:${R(1 << 20)}, ack ${R(1 << 20)}, win ${R(65535)}, len ${R(1450)}`;
       // UDP
-      if (k < 4) return `${t} IP ${a.ip}.${rp()} > ${b.ip}.${rp()}: UDP, length ${R(512) + 1}`;
+      if (packetType < 4) return `${t} IP ${a.ip}.${rp()} > ${b.ip}.${rp()}: UDP, length ${R(512) + 1}`;
       // ARP request
-      if (k < 5) return `${t} ARP, Request who-has ${b.ip} tell ${a.ip}, length 28`;
+      if (packetType < 5) return `${t} ARP, Request who-has ${b.ip} tell ${a.ip}, length 28`;
       // ARP reply
-      if (k < 6) return `${t} ARP, Reply ${b.ip} is-at ${b.mac}, length 28`;
+      if (packetType < 6) return `${t} ARP, Reply ${b.ip} is-at ${b.mac}, length 28`;
       // ICMP
-      if (k < 7) return `${t} IP ${a.ip} > ${b.ip}: ICMP echo ${R(2) ? 'request' : 'reply'}, id ${R(65535)}, seq ${R(2000)}, length 64`;
+      if (packetType < 7) return `${t} IP ${a.ip} > ${b.ip}: ICMP echo ${R(2) ? 'request' : 'reply'}, id ${R(65535)}, seq ${R(2000)}, length 64`;
       // OSPF
-      if (k < 8) return `${t} OSPF ${OSPFTYPES[R(OSPFTYPES.length)]}, Router-ID ${a.ip}, Area 0.0.0.0, length ${R(80) + 20}`;
+      if (packetType < 8) return `${t} OSPF ${OSPFTYPES[R(OSPFTYPES.length)]}, Router-ID ${a.ip}, Area 0.0.0.0, length ${R(80) + 20}`;
       // 802.11
-      if (k < 9) return `${t} 802.11 ${W11FRAMES[R(W11FRAMES.length)]} (${a.mac} > ${b.mac}) SN:${R(4096)} Flags=...`;
+      if (packetType < 9) return `${t} 802.11 ${W11FRAMES[R(W11FRAMES.length)]} (${a.mac} > ${b.mac}) SN:${R(4096)} Flags=...`;
       // BGP
-      if (k < 10) return `${t} BGP ${BGPTYPES[R(BGPTYPES.length)]} ${a.ip} > ${b.ip} AS${R(64511) + 1024} len ${R(200) + 20}`;
+      if (packetType < 10) return `${t} BGP ${BGPTYPES[R(BGPTYPES.length)]} ${a.ip} > ${b.ip} AS${R(64511) + 1024} len ${R(200) + 20}`;
       // ICMPv6 NDP
-      if (k < 11) return `${t} IP6 ${a.ll} > ff02::2: ICMP6, router ${R(2) ? 'solicitation' : 'advertisement'}, length ${R(40) + 16}`;
+      if (packetType < 11) return `${t} IP6 ${a.ll} > ff02::2: ICMP6, router ${R(2) ? 'solicitation' : 'advertisement'}, length ${R(40) + 16}`;
       // RADIUS
-      if (k < 12) return `${t} IP ${a.ip}.${rp()} > ${b.ip}.1812: RADIUS, ${RADTYPES[R(RADTYPES.length)]}, id ${R(255)}, len ${R(120) + 20}`;
+      if (packetType < 12) return `${t} IP ${a.ip}.${rp()} > ${b.ip}.1812: RADIUS, ${RADTYPES[R(RADTYPES.length)]}, id ${R(255)}, len ${R(120) + 20}`;
       // STP BPDU
       return `${t} STP 802.1d, Config, Flags [none], bridge-id 8000.${a.mac}, port-id ${R(65535).toString(16).padStart(4, '0')}, len 35`;
     };
@@ -523,8 +686,8 @@
 
     // ── Trigger actions (N / C / W / scroll) ────────────────────
     let physicsEndTime = 0;
-    const PHYSICS_DURATION = 10000;
-    const restartPhysicsWindow = now => { physicsEndTime = now + PHYSICS_DURATION; };
+    const PHYSICS_DURATION = 300000;
+    const restartPhysicsWindow = now => { physicsStartTime = now; physicsEndTime = now + PHYSICS_DURATION; };
     function regenerateAll(now) { generateNodes(); connectAll(); restartPhysicsWindow(now); }
     function rebuildConnectionsOnly(now) { connectAll(); restartPhysicsWindow(now); }
     function reseedWindField(now) { perm = buildPermutation(); windT = Math.random() * 1000; buildWindGrid(); restartPhysicsWindow(now); }
@@ -540,16 +703,34 @@
     // ── Main loop ─────────────────────────────────────────────
     let fr = 0;
     const VISUAL_MAX_DIST = 500; // purely for line-opacity falloff, not an eligibility cutoff
+    let lastFrameTime = performance.now();
     function loop(now) {
       requestAnimationFrame(loop);
       fr++;
+
+      // dt clamped so a backgrounded-tab resume (or the 5min physics-window
+      // gap itself) can't dump a huge jump into the token bucket / particle
+      // aging on the next active frame.
+      const dt = Math.min((now - lastFrameTime) / 1000, .05);
+      lastFrameTime = now;
 
       // Fade to black (trail persistence)
       cx.fillStyle = 'rgba(0,0,0,.13)';
       cx.fillRect(0, 0, W, H);
 
-      if (now < physicsEndTime) { for (const n of nd) applyForces(n); }
-      // else: 10s window elapsed -- positions hold, still rendered below
+      if (now < physicsEndTime) {
+        const wf = windFeltFactor(now);
+        for (const n of nd)
+          applyForces(n, wf);
+        spawnParticles(dt);
+        for (let i = particles.length - 1; i >= 0; i--) {
+          if (!updateParticle(particles[i], dt)) {
+            particles[i] = particles[particles.length - 1];
+            particles.pop();
+          }
+        }
+      }
+      // else: physics window elapsed -- positions hold, still rendered below
 
       // ── Connection lines (each edge lives once, in the child's `upstream`) ──
       // Colored by the origin node (n) -- the line represents n's own uplink --
@@ -562,6 +743,13 @@
           cx.strokeStyle = lineColor(n.t, alpha);
           cx.beginPath(); cx.moveTo(n.x, n.y); cx.lineTo(nb.x, nb.y); cx.stroke();
         }
+      }
+
+      // ── Particles: drawn after lines, before nodes, so nodes paint over
+      // (visually "absorb") any particle currently sitting at their center ──
+      for (const p of particles) {
+        cx.fillStyle = p.colorPrefix + Math.max(0, Math.min(1, p.brightness)) + ')';
+        cx.beginPath(); cx.arc(p.x, p.y, PARTICLE_RADIUS, 0, 6.2832); cx.fill();
       }
 
       // ── Nodes: pulsing dot + a glow scaled by neighbor count, both in the
@@ -591,7 +779,7 @@
     requestAnimationFrame(loop);
 
     // ── Controls: N regenerate nodes, C rebuild connections, W reseed wind,
-    // scroll steps wind time -- every one of these restarts the 10s window ──
+    // scroll steps wind time -- every one of these restarts the PHYSICS_DURATION window ──
     addEventListener('keydown', e => {
       const k = e.key.toLowerCase(), now = performance.now();
       if (k === 'n') regenerateAll(now);
