@@ -282,19 +282,20 @@
         // How many uplinks each node type tries to draw (downlinks are implicit, since the child node owns the edge).
         const LINKS_NEEDED = { RTR: 4, FW: 2, SW: 2, SRV: 1, AP: 1, HST: 1 };
         // Connector rules by node type - the pool of eligible upstream nodes that a given node can connect to. 
-        const CAND_TYPES = { RTR: ['RTR', 'SW'], FW: ['RTR'], SW: ['RTR', 'FW', 'SW'], SRV: ['SW'], AP: ['SW', 'AP'], HST: ['AP', 'SW'] };
+        const CAND_TYPES = { RTR: ['RTR'], FW: ['RTR'], SW: ['RTR', 'FW', 'SW'], SRV: ['SW'], AP: ['SW', 'AP'], HST: ['AP', 'SW'] };
         // Tether multiplier x wind-grid cell width = how far a node's leash lets it stray from its spawn anchor. 
-        const TETHER_MULT = { RTR: .3, FW: .4, SW: .5, SRV: .7, AP: 1.2, HST: 1.6 };
+        const TETHER_MULT = { RTR: 1.3, FW: .4, SW: .5, SRV: .7, AP: 1.2, HST: 1.6 };
         const NS = { RTR: 5, FW: 4.4, SW: 3.8, SRV: 3, AP: 3, HST: 2.4 }; // dot radius per type
         const randRange = ([lo, hi]) => lo + R(hi - lo + 1);
 
         // Per-type color: hues spaced 360/6=60deg apart around the wheel,
-        // so all six are maximally distinct from each other. Rotated and shuffled 
+        // so all six are maximally distinct from each other -- rotated and
+        // shuffled off hierarchy order so adjacent tiers don't look adjacent.
         // Nodes render at full saturation/lightness; a node's own connection
         // lines use the SAME hue (so you can still tell whose uplink it is) but
         // desaturated and dimmed -- similar family, clearly not the same swatch
         // as the solid glowing dot.
-        const TYPE_HUE = { RTR: 230, FW: 50, SW: 290, SRV: 350, AP: 170, HST: 110 };
+        const TYPE_HUE = { RTR: 230, FW: 350, SW: 50, SRV: 290, AP: 170, HST: 110 };
         const NODE_SAT = 72, NODE_LIGHT = 58;
         const LINE_SAT = 38, LINE_LIGHT = 42;
         // Only the alpha varies frame-to-frame (pulse/distance-based) -- the
@@ -529,7 +530,7 @@
             n.x += n.vx; n.y += n.vy;
         }
 
-        // ── Particles: HST-spawned motes that ride the wind hierarchy-ward
+        // ── Particles: HST/SRV-spawned motes that ride the wind hierarchy-ward
         // (upstream, towards RTR), then hierarchy-outward (downstream, back
         // towards the edge), then go feral (unconstrained drift) until they burn
         // out. Deliberately its own function rather than reusing applyForces()
@@ -663,13 +664,12 @@
             if (p.phase === 'up' || p.phase === 'down') p.brightness = 1;
             else if (p.phase === 'drift') { 
                 p.brightness = 1 - .4 * Math.min(1, (ageFrac - p.t2) / (p.t3 - p.t2)); 
-                p.hue -= 60; // drift hue shift for visual interest
-                p.age *= 1.01; // accelerate aging while drifting, so the sqrt fade doesn't linger too long
+                p.age += dt * 2000 * burn; // burn faster 
             }
             else { //
                 const df = Math.min(1, (ageFrac - p.t3) / (1 - p.t3));// 
-                p.brightness = .3 * (1 - Math.sqrt(df)); 
-                p.age *= 1.02; // accelerate aging while dying, so the sqrt fade doesn't linger too long
+                p.brightness = .6 * (1 - Math.sqrt(df)); 
+                p.age *= 1.01; // burn out quickly
             }
 
             return true;
@@ -713,7 +713,7 @@
 
         // ── Trigger actions (N / C / W / scroll) ────────────────────
         let physicsEndTime = 0;
-        const PHYSICS_DURATION = 300000;
+        const PHYSICS_DURATION = 60000; // 1 minute, long enough to let the layout settle under attraction/tether alone after the wind dies off
         const restartPhysicsWindow = now => { physicsStartTime = now; physicsEndTime = now + PHYSICS_DURATION; };
         function regenerateAll(now) { generateNodes(); connectAll(); restartPhysicsWindow(now); particles = [];  }
         function rebuildConnectionsOnly(now) { connectAll(); restartPhysicsWindow(now); }
@@ -754,23 +754,27 @@
                     if (!updateParticle(particles[i], dt)) {
                         particles[i] = particles[particles.length - 1];
                         particles.pop();
-                        // ── Packet capture scrolls on packet death for bursty stream
-                        pkts.shift(); 
-                        pkts.push(nextPkt()); 
+                        // Packet capture now scrolls on particle death rather than a fixed
+                        // per-frame cadence. NOTE: this makes packet-capture activity fully
+                        // dependent on particles being alive and aging out -- see review notes
+                        // on why that stalls at startup and freezes once physicsEndTime passes.
+                        pkts.shift();
+                        pkts.push(nextPkt());
                     }
                 }
+            } else {
+                // reset physics timers to keep it animated
+                reseedWindField(now); 
+                rebuildConnectionsOnly(now); 
             }
-            // else: physics window elapsed -- positions hold, still rendered below
-
             // ── Connection lines (each edge lives once, in the child's `upstream`) ──
             // Colored by the origin node (n) -- the line represents n's own uplink --
             // using the same hue as n's dot but desaturated/dimmed (see lineColor).
-            //cx.lineWidth = .65;
             for (const n of nd) {
+                cx.lineWidth = n.sz * .35 + 0.3; // line width scales with node size -- depends only on n, so set once per node, not once per edge
                 for (const nb of n.upstream) {
                     const d = dist(n, nb);
                     const alpha = Math.max(0, 1 - d / VISUAL_MAX_DIST) * .55 + .05;
-                    cx.lineWidth = n.sz * .35 + 0.3; // line width scales with node size
                     cx.strokeStyle = lineColor(n.t, alpha);
                     cx.beginPath(); cx.moveTo(n.x, n.y); cx.lineTo(nb.x, nb.y); cx.stroke();
                 }
