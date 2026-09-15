@@ -158,6 +158,12 @@
             color: var(--c5)
         }
 
+        /* Split-flap/LFSR decode in progress -- dimmer/desaturated than
+           resolved text; #mailReveal drops this class the instant it locks in. */
+        #mailReveal.decoding {
+            color: var(--c3)
+        }
+
         a {
             color: rgba(var(--a), .9);
             text-decoration: none
@@ -241,7 +247,7 @@
                     <span class="tag">kerberos</span><span class="tag">btrfs</span><span class="tag">iSCSI</span><span
                         class="tag">NFS</span>
                 </div>
-                <div class="pr"><span class="cur">█</span></div>
+                <div class="pr">mail <span id="mailReveal">spamCapture@example.com</span></div>
 
                 <div class="foot">
                     // shibboleth [ˈʃɪbəlɛθ] — Judges 12:6<br>
@@ -287,22 +293,9 @@
         const TETHER_MULT = { RTR: 1.3, FW: .4, SW: .5, SRV: .7, AP: 1.2, HST: 1.6 };
         const NS = { RTR: 5, FW: 4.4, SW: 3.8, SRV: 3, AP: 3, HST: 2.4 }; // dot radius per type
         const randRange = ([lo, hi]) => lo + R(hi - lo + 1);
-
-        // Per-type color: hues spaced 360/6=60deg apart around the wheel,
-        // so all six are maximally distinct from each other -- rotated and
-        // shuffled off hierarchy order so adjacent tiers don't look adjacent.
-        // Nodes render at full saturation/lightness; a node's own connection
-        // lines use the SAME hue (so you can still tell whose uplink it is) but
-        // desaturated and dimmed -- similar family, clearly not the same swatch
-        // as the solid glowing dot.
-        const TYPE_HUE = { RTR: 230, FW: 350, SW: 50, SRV: 290, AP: 170, HST: 110 };
-        const NODE_SAT = 72, NODE_LIGHT = 58;
-        const LINE_SAT = 38, LINE_LIGHT = 42;
-        // Only the alpha varies frame-to-frame (pulse/distance-based) -- the
-        // hue/sat/light portion is fixed per type, so build that part once instead
-        // of re-running a template literal for every node and every edge, every
-        // frame. nodeColor/lineColor then just concatenate the alpha onto a
-        // pre-built string.
+        const TYPE_HUE = { RTR: 36,  FW: 37,  SW: 38, SRV: 39,  AP: 40,  HST: 35 };
+        const NODE_SAT = 83, NODE_LIGHT = 38;
+        const LINE_SAT = 48, LINE_LIGHT = 25;
         const NODE_COLOR_PREFIX = {}, LINE_COLOR_PREFIX = {};
         for (const t of NODE_TYPES) {
             NODE_COLOR_PREFIX[t] = `hsla(${TYPE_HUE[t]},${NODE_SAT}%,${NODE_LIGHT}%,`;
@@ -342,7 +335,7 @@
                     lerp(u, grad(perm[AB + 1], x, y - 1, z - 1), grad(perm[BB + 1], x - 1, y - 1, z - 1))));
         }
 
-        const GRID_COLS = 50; // "hundreds, not thousands" of cells -- coarse on purpose
+        const GRID_COLS = 50; // coarse grid of wind vectors, sampled at a moment in time and interpolated for each node every frame. More columns = more detail, but more CPU churn.
         let GRID_ROWS, windGrid = null, windT = Math.random() * 1000;
         const WIND_T_STEP = .15, WIND_NOISE_SCALE = .35, WIND_DIR_Y_OFFSET = 500, WIND_MAG_OFFSET = 1000, MAX_WIND_MAG = 1;
         function buildWindGrid() {
@@ -364,14 +357,7 @@
             for (let j = 0; j <= GRID_ROWS; j++) {
                 for (let i = 0; i <= GRID_COLS; i++) {
                     const nx = i * WIND_NOISE_SCALE, ny = j * WIND_NOISE_SCALE;
-                    // Direction: two independent noise samples used as raw x/y
-                    // components, then normalized -- NOT a single noise value mapped
-                    // linearly to an angle. Noise hovers near its mean (0) far more
-                    // than it swings to +-1, so angle=(noise+1)*PI clusters tightly
-                    // around PI radians (due left in canvas coords) and rarely reaches
-                    // 0/2PI (right) -- that's what was producing the "always blows
-                    // left" bias. Two independent components + normalize has no
-                    // preferred compass direction.
+                    // Direction: two independent noise samples used as raw x/y components, then normalized. 
                     let dx = noise3(nx, ny, windT);
                     let dy = noise3(nx + WIND_DIR_Y_OFFSET, ny + WIND_DIR_Y_OFFSET, windT);
                     const dlen = Math.hypot(dx, dy) || 1;
@@ -384,11 +370,6 @@
                 }
             }
         }
-        // sampleWind is called once per node per frame while physics is active
-        // (up to ~130x/frame at 60fps). It used to return a fresh {vx,vy} object
-        // literal every call -- pure GC churn, since the caller (applyForces)
-        // only ever reads it immediately and never holds onto it. Reused here
-        // instead; safe because nothing keeps more than one sample alive at once.
         const _windSample = { vx: 0, vy: 0 };
         function sampleWind(x, y) {
             const gx = (x / W) * GRID_COLS, gy = (y / H) * GRID_ROWS;
@@ -468,13 +449,10 @@
         }
         function connectAll() {
             for (const n of nd) { n.upstream = []; n.downstream = []; }
-            // Single O(N) pass to bucket by type, instead of nd.filter() once per
-            // type (6x nd.filter() = 6 full scans of the whole array to do what one
-            // scan can).
             const byType = {};
             for (const t of NODE_TYPES) byType[t] = [];
             for (const n of nd) byType[n.t].push(n);
-            for (const t of NODE_TYPES) { // RTR -> FW -> SW -> SRV -> AP -> HST, per spec build order
+            for (const t of NODE_TYPES) { 
                 const group = byType[t];
                 for (let i = group.length - 1; i > 0; i--) { const j = R(i + 1);[group[i], group[j]] = [group[j], group[i]]; } // shuffle
                 for (const n of group) connectNode(n);
@@ -533,17 +511,27 @@
         // ── Particles: HST/SRV-spawned motes that ride the wind hierarchy-ward
         // (upstream, towards RTR), then hierarchy-outward (downstream, back
         // towards the edge), then go feral (unconstrained drift) until they burn
-        // out. Deliberately its own function rather than reusing applyForces()
-        // wholesale -- particles need direction-aware wind reversal and a
-        // calibrated per-edge cruise speed that node physics has no concept of --
-        // but every constant it leans on (K_WIND, DAMPING, MAX_SPEED, DAMPING_SS,
-        // sampleWind, lerp, dist, R) is pulled straight from the systems above.
+        // out. 
         const PARTICLE_CAPACITY = 234;          // token-bucket capacity == hard cap on live particles
-        const PARTICLE_SAT = 90, PARTICLE_LIGHT = 74; // brighter/more saturated than node dots -- "bright HST" theme
+        const PARTICLE_SAT = 90, PARTICLE_LIGHT = 40; // brighter/more saturated than node dots -- "bright HST" theme
         const PARTICLE_RADIUS = 1.6;
         const PARTICLE_EDGE_DIST_SHORT = 40;     // px, guess at a "short hop" connection length
         const PARTICLE_EDGE_DIST_LONG = 500;     // px, mirrors VISUAL_MAX_DIST's far-distance reference
         const EDGE_TIME_MIN = .25, EDGE_TIME_MAX = 6; // seconds to traverse a short vs. long connection
+        // Wind vs. steering balance while streaming: pullAccel (below) comes out
+        // to roughly maxSpeed*9 by construction (see DAMPING_SS), which dwarfs a
+        // typical wind contribution (K_WIND * up to MAX_WIND_MAG=1 -- so ~2.2 at
+        // most) on every edge length. Particles were basically going dead
+        // straight regardless of wind as a result. These two knobs fix that
+        // together rather than just cranking wind up in isolation: boost what
+        // particles feel from the wind field, and ease off how hard they lock
+        // onto the target, so the two forces are actually comparable instead of
+        // one totally swamping the other. Net effect is more pronounced on long
+        // hops (lower maxSpeed -> lower pullAccel) than short ones, which reads
+        // as "short links are snappy, long-haul links wander" -- a nice
+        // side effect rather than something explicitly tuned for.
+        const PARTICLE_WIND_MULT = 3;    // multiplies K_WIND for particles only, on top of the node wind force
+        const PARTICLE_STEER_EASE = .5;  // multiplies pullAccel -- <1 loosens the lock onto the target
         const ASSUME_FPS = 60;                   // frame-rate assumption, matches the rest of the file's per-frame (not per-second) constants
         const REACH_PAD = 7;                     // px beyond a node's own radius that counts as "arrived"
 
@@ -551,9 +539,7 @@
         let particleTokens = 0, spawnRate = R(50), spawnRateTimer = 0;
 
         // Escalates phase forward (never backward) whenever the current node has
-        // no list to travel along -- the "upstream[]/downstream[] empty" edge
-        // case from spec, folded into one place so both spawn and mid-route
-        // transitions go through it.
+        // no list to travel along
         function settleParticlePhase(p) {
             if (p.phase === 'up' && !p.currentNode.upstream.length) p.phase = 'down';
             if (p.phase === 'down' && !p.currentNode.downstream.length) p.phase = 'drift';
@@ -561,8 +547,7 @@
         // Calibrates cruise speed for the newly-chosen hop so short connections
         // traverse in ~EDGE_TIME_MIN and long ones in ~EDGE_TIME_MAX, then derives
         // the steering accel that converges to that speed under the *existing*
-        // DAMPING recurrence (see DAMPING_SS above) -- done once per hop, not
-        // per-frame, since CPU is the scarce resource here, not memory.
+        // DAMPING recurrence (see DAMPING_SS above)
         function calibrateEdge(p) {
             const d = Math.max(dist(p, p.target), 1);
             const norm = Math.min(1, Math.max(0, (d - PARTICLE_EDGE_DIST_SHORT) / (PARTICLE_EDGE_DIST_LONG - PARTICLE_EDGE_DIST_SHORT)));
@@ -577,7 +562,7 @@
         }
         function makeParticle() {
             const home = particleGeneratingNodes[R(particleGeneratingNodes.length)];
-            const hue = TYPE_HUE[home.t] + (Math.random() - .5) * 30; // home node hue, splattered and shifted for variety
+            const hue = TYPE_HUE[home.t] + (Math.random() - .5) * 37; // hue, splattered for variety
             const p = {
                 x: home.x, y: home.y, vx: 0, vy: 0,
                 age: 0, maxLifeTime: (60 + Math.random() * 120) * 1000, // 60-180s, decided at spawn
@@ -596,13 +581,13 @@
         }
 
         // Token bucket: refills at `spawnRate` particles/sec (re-rolled via
-        // R(200) roughly once a second for bursty, organic spawn character
+        // R(37) roughly once a second for bursty, organic spawn character
         // rather than a metronomic one), capped at PARTICLE_CAPACITY tokens.
         // Live particle count is separately capped at PARTICLE_CAPACITY too, so
         // a long idle stretch banking tokens can't burst past the pool ceiling.
         function spawnParticles(dt) {
             spawnRateTimer += dt;
-            if (spawnRateTimer >= 1) { spawnRateTimer -= 1; spawnRate = R(50); }
+            if (spawnRateTimer >= 1) { spawnRateTimer -= 1; spawnRate = R(37); }
             particleTokens = Math.min(PARTICLE_CAPACITY, particleTokens + spawnRate * dt);
             while (particleTokens >= 1 && particles.length < PARTICLE_CAPACITY) {
                 particleTokens -= 1;
@@ -642,10 +627,10 @@
                 const d = Math.max(Math.hypot(dx, dy), MIN_ATTRACT_D);
                 const dirx = dx / d, diry = dy / d;
                 if (wvx * dirx + wvy * diry < 0) { wvx = -wvx; wvy = -wvy; }
-                fx += wvx * K_WIND + dirx * p.pullAccel;
-                fy += wvy * K_WIND + diry * p.pullAccel;
+                fx += wvx * K_WIND * PARTICLE_WIND_MULT + dirx * p.pullAccel * PARTICLE_STEER_EASE;
+                fy += wvy * K_WIND * PARTICLE_WIND_MULT + diry * p.pullAccel * PARTICLE_STEER_EASE;
             } else { // drift/dying
-                fx += wvx * K_WIND; fy += wvy * K_WIND;
+                fx += wvx * K_WIND * PARTICLE_WIND_MULT; fy += wvy * K_WIND * PARTICLE_WIND_MULT;
             }
             p.vx = (p.vx + fx) * DAMPING; p.vy = (p.vy + fy) * DAMPING;
             const sp = Math.hypot(p.vx, p.vy), cap = p.maxSpeed || MAX_SPEED;
@@ -722,11 +707,55 @@
         function reseedWindField(now) { perm = buildPermutation(); windT = Math.random() * 1000; buildWindGrid(); restartPhysicsWindow(now); }
         function stepWindField(dir, now) { windT += dir * WIND_T_STEP; buildWindGrid(); restartPhysicsWindow(now); }
 
+        // ── Mail reveal: Galois-LFSR decode from the decoy address.
+        // One-way, run-once, intentionally not reusable/configurable.
+        const LFSR_TAP = TYPE_HUE.FW & 0xFF; // low 8 bits used
+        const LFSR_SEED = Object.values(TYPE_HUE).reduce((acc, v) => (acc ^ (v & 0xFF)) & 0xFF, 0xFF); // XOR of all low 8 bits
+        const MAIL_ALPHABET = 'jwh.ilyeosgkadxftqr@pbnuzmvc';
+        const MAIL_CIPHER = [54, 120, 124, 118, 79, 71, 69, 98, 70, 121, 94, 78, 103, 87, 88, 71, 89, 77];
+
+        function lfsrKeystream(len, seed, tap) {
+            let state = seed & 0xFF;
+            const out = [];
+            for (let i = 0; i < len; i++) {
+                const lsb = state & 1;
+                state >>>= 1;
+                if (lsb) state ^= tap;
+                out.push(state);
+            }
+            return out;
+        }
+        const MAIL_TARGET = (() => {
+            const ks = lfsrKeystream(MAIL_CIPHER.length, LFSR_SEED, LFSR_TAP);
+            return MAIL_CIPHER.map((c, i) => c ^ ks[i]).map(code => MAIL_ALPHABET[code - 0x40]).join('');
+        })();
+        const MAIL_CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*_+-=<>?/\\|~'; // flicker glyphs for unresolved positions
+        const MAIL_DURATION = PHYSICS_DURATION * .15; // 15% of PHYSICS_DURATION, same convention as the rest of the timed effects on this page
+        function startMailDecode() {
+            const el = document.getElementById('mailReveal');
+            if (!el) return;
+            const startLen = el.textContent.length; // decoy's length -- target is allowed to differ
+            const endLen = MAIL_TARGET.length;
+            const t0 = performance.now();
+            el.classList.add('decoding');
+            const timer = setInterval(() => {
+                const t = Math.min(1, (performance.now() - t0) / MAIL_DURATION);
+                const len = Math.round(lerp(t, startLen, endLen));
+                const resolved = Math.min(endLen, Math.floor(t * endLen)); // chars lock in left-to-right as t advances
+                let out = '';
+                for (let i = 0; i < len; i++)
+                    out += i < resolved ? MAIL_TARGET[i] : MAIL_CHARSET[R(MAIL_CHARSET.length)];
+                el.textContent = out;
+                if (t >= 1) { el.textContent = MAIL_TARGET; el.classList.remove('decoding'); clearInterval(timer); }
+            }, 45); // ~22 flickers/sec -- plenty for a convincing flap/glitch feel without a dedicated rAF loop
+        }
+
         // ── Initial setup (page load: canvas -> nodes -> connections -> physics) ──
         buildWindGrid();
         generateNodes();
         connectAll();
         restartPhysicsWindow(performance.now());
+        startMailDecode();
         let pkts = Array.from({ length: PL }, nextPkt); // safe now that nd is populated
 
         // ── Main loop ─────────────────────────────────────────────
