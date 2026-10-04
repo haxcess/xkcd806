@@ -225,7 +225,7 @@
                     <span class="tag">W</span> Randomize the wind field<br>
                     <span class="tag">Scrollwheel</span> Step the wind field
                 </div>
-                <div class="foot">Controls remain active after this panel hides in 3 seconds.</div>
+                <div class="foot">Controls remain active after this panel hides in 12 seconds.</div>
             </div>
         </div>
     </div>
@@ -700,7 +700,7 @@
     function startControlsTimeout() {
         const el = document.getElementById('ui');
         if (!el) return;
-        setTimeout(() => { el.style.display = 'none'; }, 3000);
+        setTimeout(() => { el.style.display = 'none'; }, 12000);
     }
 
     // ── Initial setup (page load: canvas -> nodes -> connections -> physics) ──
