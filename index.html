@@ -118,7 +118,8 @@
             font-size: .6rem;
             letter-spacing: .42em;
             color: var(--c5);
-            margin-bottom: 1.25rem
+            margin-bottom: 1.25rem;
+            text-align: center
         }
 
         .pr {
@@ -129,7 +130,7 @@
         }
 
         .pr::before {
-            content: 'root@shibboleet:~$ ';
+            content: 'anon@shibboleet:~$ ';
             color: rgba(var(--a), .35)
         }
 
@@ -158,8 +159,7 @@
             color: var(--c5)
         }
 
-        /* Split-flap/LFSR decode in progress -- dimmer/desaturated than
-           resolved text; #mailReveal drops this class the instant it locks in. */
+        /* Split-flap animation progress */
         #mailReveal.decoding {
             color: var(--c3)
         }
@@ -224,6 +224,7 @@
 
                 <div class="pr">whoami</div>
                 <div class="out">
+                    Alex Pressé<br>
                     Network Administrator &amp; Systems Architect<br>
                     <span class="dim">Calgary, Alberta</span>
                 </div>
@@ -240,21 +241,14 @@
                 </div>
                 <div class="pr">ls ~/tinkering/</div>
                 <div class="out">
-                    <a class="tag" href="./analemma-clock.html">analemma</a><span class="tag">utility-spy</span><span
-                        class="tag">weather-spy</span>
-                    <span class="tag">software defined radio</span><span class="tag">HAM amateur radio</span><span
-                        class="tag">LoRa Meshtastic</span>
-                    <span class="tag">kerberos</span><span class="tag">btrfs</span><span class="tag">iSCSI</span><span
-                        class="tag">NFS</span>
+                    <a class="tag" href="./analemma-clock.html">analemma</a>
                 </div>
                 <div class="pr">mail <span id="mailReveal">spamCapture@example.com</span></div>
 
                 <div class="foot">
                     // shibboleth [ˈʃɪbəlɛθ] — Judges 12:6<br>
-                    // shibboleet [ˈʃɪbəlit] — XKCD &nbsp;806<br>
+                    // shibboleet [ˈʃɪbəlit] — XKCD:806<br>
                     // &nbsp;—&nbsp; a word known only to the initiated<br>
-                    // speak friend, and enter &nbsp;·&nbsp; <span style="letter-spacing:.05em">mail <span
-                            style="color:rgba(255,176,0,.55)">alex</span></span>
                 </div>
             </div>
         </div>
