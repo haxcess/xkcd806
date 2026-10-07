@@ -70,12 +70,50 @@
             align-items: center;
             justify-content: center;
             z-index: 10;
-            padding: 1rem
+            padding: 4.5rem 1rem 1rem;
+            pointer-events: none
         }
+
+        #ui[hidden] { display: none; }
+
+        button {
+            font: inherit;
+            color: inherit;
+            background: #000b;
+            border: 1px solid var(--c3);
+            padding: .4rem .65rem;
+            min-height: 44px;
+            cursor: pointer;
+            touch-action: manipulation
+        }
+
+        button:hover, button:focus-visible {
+            background: rgba(var(--a), .1);
+            border-color: var(--c);
+            outline: 2px solid var(--c5);
+            outline-offset: 2px
+        }
+
+        #help-toggle {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 11
+        }
+
+        #close-help { min-width: 44px; font-size: 1.2rem; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+        .controls button { text-align: left; }
+        kbd.tag { font-family: inherit; min-width: 2rem; text-align: center; }
+        @media(max-width:480px) { .controls { grid-template-columns: 1fr; } }
 
         /* Terminal window */
         .win {
             width: min(580px, 96vw);
+            max-height: calc(100dvh - 5.5rem);
+            overflow-y: auto;
+            pointer-events: auto;
+            background: #000e;
             border: 1px solid var(--c3);
             box-shadow: 0 0 60px rgba(var(--a), .08), 0 0 0 1px rgba(var(--a), .04), inset 0 1px 0 rgba(var(--a), .06)
         }
@@ -211,26 +249,30 @@
 
 <body>
     <canvas id="c"></canvas>
-    <div id="ui">
+    <button id="help-toggle" aria-controls="ui" aria-expanded="true">? controls</button>
+    <section id="ui" aria-label="Packet labyrinth controls">
         <div class="win">
             <div class="bar">
                 <span class="dots">■ ■ ■</span>
                 <span>packet labyrinth &mdash; controls</span>
+                <button id="close-help" aria-label="Hide controls">×</button>
             </div>
             <div class="bd">
                 <div class="pr">help</div>
-                <div class="out">
-                    <span class="tag">N</span> Nodes rebuild<br>
-                    <span class="tag">C</span> Connections rebuild<br>
-                    <span class="tag">W</span> Wind rebuild<br>
-                    <span class="tag">Scrollwheel</span> Wiggle the wind field<br>
-                    <span class="tag">Ctrl R</span> Refresh color theme<br>
+                <div class="out controls">
+                    <button data-action="nodes"><kbd class="tag">N</kbd> Rebuild nodes</button>
+                    <button data-action="connections"><kbd class="tag">C</kbd> Rebuild connections</button>
+                    <button data-action="wind"><kbd class="tag">W</kbd> Rebuild wind</button>
+                    <button data-action="theme"><kbd class="tag">Ctrl R</kbd> Refresh color theme</button>
+                    <button data-action="wind-back">← Step wind backward</button>
+                    <button data-action="wind-forward">Step wind forward →</button>
                 </div>
-                <div class="foot">Controls remain active after this panel hides in 12 seconds.</div>
+                <div class="foot">Click or tap a control. Scroll over the animation to wiggle the wind field.<br>
+                    Hides after 12 seconds of inactivity. Press <kbd>?</kbd> or tap “? controls” to bring it back.<br>
+                    Refresh color theme reloads the page and rebuilds the network.</div>
             </div>
         </div>
-    </div>
-</body>
+    </section>
 <script>
     // ── Uptime ────────────────────────────────────────────────
     // ── Canvas ────────────────────────────────────────────────
@@ -697,19 +739,43 @@
     function reseedWindField(now) { perm = buildPermutation(); windT = Math.random() * 1000; buildWindGrid(); restartPhysicsWindow(now); }
     function stepWindField(dir, now) { windT += dir * WIND_T_STEP; buildWindGrid(); restartPhysicsWindow(now); }
 
-    // ── Controls hint: shown once at startup ───────────────────
-    function startControlsTimeout() {
-        const el = document.getElementById('ui');
-        if (!el) return;
-        setTimeout(() => { el.style.display = 'none'; }, 12000);
+    // ── Interactive help ──────────────────────────────────────
+    const help = document.getElementById('ui');
+    const helpToggle = document.getElementById('help-toggle');
+    let helpTimer;
+    function showHelp(show) {
+        clearTimeout(helpTimer);
+        if (!show && help.contains(document.activeElement)) helpToggle.focus();
+        help.hidden = !show;
+        helpToggle.setAttribute('aria-expanded', String(show));
+        if (show) helpTimer = setTimeout(() => showHelp(false), 12000);
     }
+    const actions = {
+        nodes: () => regenerateAll(performance.now()),
+        connections: () => rebuildConnectionsOnly(performance.now()),
+        wind: () => reseedWindField(performance.now()),
+        'wind-back': () => stepWindField(-1, performance.now()),
+        'wind-forward': () => stepWindField(1, performance.now()),
+        theme: () => location.reload()
+    };
+    helpToggle.addEventListener('click', () => showHelp(help.hidden));
+    document.getElementById('close-help').addEventListener('click', () => showHelp(false));
+    for (const button of help.querySelectorAll('[data-action]')) {
+        button.addEventListener('click', () => {
+            actions[button.dataset.action]();
+            showHelp(true);
+        });
+    }
+    help.addEventListener('pointerdown', () => showHelp(true));
+    help.addEventListener('focusin', () => showHelp(true));
+    help.addEventListener('wheel', () => showHelp(true), { passive: true });
 
     // ── Initial setup (page load: canvas -> nodes -> connections -> physics) ──
     buildWindGrid();
     generateNodes();
     connectAll();
     restartPhysicsWindow(performance.now());
-    startControlsTimeout();
+    showHelp(true);
 
     // ── Main loop ─────────────────────────────────────────────
     let fr = 0;
@@ -792,12 +858,19 @@
     // ── Controls: N regenerate nodes, C rebuild connections, W reseed wind,
     // scroll steps wind time -- every one of these restarts the PHYSICS_DURATION window ──
     addEventListener('keydown', e => {
-        const k = e.key.toLowerCase(), now = performance.now();
-        if (k === 'n') regenerateAll(now);
-        else if (k === 'c') rebuildConnectionsOnly(now);
-        else if (k === 'w') reseedWindField(now);
+        if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+        if (e.key === 'Escape') { showHelp(false); return; }
+        if (e.key === '?') { e.preventDefault(); showHelp(help.hidden); return; }
+        if (e.target.closest('input, select, textarea, [contenteditable="true"]')) return;
+        const action = { n: 'nodes', c: 'connections', w: 'wind' }[e.key.toLowerCase()];
+        if (action) {
+            e.preventDefault();
+            actions[action]();
+            if (!help.hidden) showHelp(true);
+        }
     });
-    addEventListener('wheel', e => {
+    cv.addEventListener('wheel', e => {
+        if (e.ctrlKey || e.deltaY === 0) return;
         e.preventDefault();
         stepWindField(e.deltaY > 0 ? 1 : -1, performance.now());
     }, { passive: false });
